@@ -117,6 +117,7 @@ import org.elasticsearch.index.shard.IndexShardState;
 import org.elasticsearch.index.shard.IndexingOperationListener;
 import org.elasticsearch.index.shard.IndexingStats;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
 import org.elasticsearch.indices.cluster.IndicesClusterStateService;
 import org.elasticsearch.indices.fielddata.cache.IndicesFieldDataCache;
@@ -223,6 +224,7 @@ public class IndicesService extends AbstractLifecycleComponent
     private final Collection<Function<IndexSettings, Optional<EngineFactory>>> engineFactoryProviders;
     private final Map<String, IndexStorePlugin.DirectoryFactory> directoryFactories;
     private final Map<String, IndexStorePlugin.RecoveryStateFactory> recoveryStateFactories;
+    private final Collection<Function<IndexSettings, ChannelFactory>> translogChannelFactoryProviders;
     final AbstractRefCounted indicesRefCount; // pkg-private for testing
     private final CountDownLatch closeLatch = new CountDownLatch(1);
     private volatile boolean idFieldDataEnabled;
@@ -247,7 +249,8 @@ public class IndicesService extends AbstractLifecycleComponent
                           ScriptService scriptService, ClusterService clusterService, Client client, MetaStateService metaStateService,
                           Collection<Function<IndexSettings, Optional<EngineFactory>>> engineFactoryProviders,
                           Map<String, IndexStorePlugin.DirectoryFactory> directoryFactories, ValuesSourceRegistry valuesSourceRegistry,
-                          Map<String, IndexStorePlugin.RecoveryStateFactory> recoveryStateFactories) {
+                          Map<String, IndexStorePlugin.RecoveryStateFactory> recoveryStateFactories,
+                          Collection<Function<IndexSettings, ChannelFactory>> translogChannelFactoryProviders) {
         this.settings = settings;
         this.threadPool = threadPool;
         this.pluginsService = pluginsService;
@@ -294,6 +297,7 @@ public class IndicesService extends AbstractLifecycleComponent
 
         this.directoryFactories = directoryFactories;
         this.recoveryStateFactories = recoveryStateFactories;
+        this.translogChannelFactoryProviders = translogChannelFactoryProviders;
         // doClose() is called when shutting down a node, yet there might still be ongoing requests
         // that we need to wait for before closing some resources such as the caches. In order to
         // avoid closing these resources while ongoing requests are still being processed, we use a
@@ -642,7 +646,8 @@ public class IndicesService extends AbstractLifecycleComponent
             indexCreationContext);
 
         final IndexModule indexModule = new IndexModule(idxSettings, analysisRegistry, getEngineFactory(idxSettings),
-            directoryFactories, () -> allowExpensiveQueries, indexNameExpressionResolver, recoveryStateFactories);
+            directoryFactories, () -> allowExpensiveQueries, indexNameExpressionResolver, recoveryStateFactories,
+            translogChannelFactoryProviders);
         for (IndexingOperationListener operationListener : indexingOperationListeners) {
             indexModule.addIndexOperationListener(operationListener);
         }
@@ -713,7 +718,8 @@ public class IndicesService extends AbstractLifecycleComponent
     public synchronized MapperService createIndexMapperService(IndexMetadata indexMetadata) throws IOException {
         final IndexSettings idxSettings = new IndexSettings(indexMetadata, this.settings, indexScopedSettings);
         final IndexModule indexModule = new IndexModule(idxSettings, analysisRegistry, getEngineFactory(idxSettings),
-            directoryFactories, () -> allowExpensiveQueries, indexNameExpressionResolver, recoveryStateFactories);
+            directoryFactories, () -> allowExpensiveQueries, indexNameExpressionResolver, recoveryStateFactories,
+            translogChannelFactoryProviders);
         pluginsService.onIndexModule(indexModule);
         return indexModule.newIndexMapperService(xContentRegistry, mapperRegistry, scriptService);
     }

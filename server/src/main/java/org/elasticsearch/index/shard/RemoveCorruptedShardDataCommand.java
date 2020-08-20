@@ -57,6 +57,7 @@ import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.engine.Engine;
 import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.store.Store;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.index.translog.TruncateTranslogAction;
 
 import java.io.IOException;
@@ -70,6 +71,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.StreamSupport;
+import java.util.function.Function;
 
 public class RemoveCorruptedShardDataCommand extends ElasticsearchNodeCommand {
 
@@ -83,7 +85,7 @@ public class RemoveCorruptedShardDataCommand extends ElasticsearchNodeCommand {
     private final RemoveCorruptedLuceneSegmentsAction removeCorruptedLuceneSegmentsAction;
     private final TruncateTranslogAction truncateTranslogAction;
 
-    public RemoveCorruptedShardDataCommand() {
+    public RemoveCorruptedShardDataCommand(Function<IndexSettings, ChannelFactory> channelFactoryProvider) {
         super("Removes corrupted shard files");
 
         folderOption = parser.acceptsAll(Arrays.asList("d", "dir"),
@@ -100,7 +102,7 @@ public class RemoveCorruptedShardDataCommand extends ElasticsearchNodeCommand {
         parser.accepts(TRUNCATE_CLEAN_TRANSLOG_FLAG, "Truncate the translog even if it is not corrupt");
 
         removeCorruptedLuceneSegmentsAction = new RemoveCorruptedLuceneSegmentsAction();
-        truncateTranslogAction = new TruncateTranslogAction(namedXContentRegistry);
+        truncateTranslogAction = new TruncateTranslogAction(namedXContentRegistry, channelFactoryProvider);
     }
 
     @Override
@@ -347,7 +349,7 @@ public class RemoveCorruptedShardDataCommand extends ElasticsearchNodeCommand {
                     }
 
                     if (translogStatus != CleanStatus.CLEAN) {
-                        truncateTranslogAction.execute(terminal, shardPath, indexDir);
+                        truncateTranslogAction.execute(terminal, shardPath, clusterState, indexDir);
                     }
                 } catch (LockObtainFailedException lofe) {
                     final String msg = "Failed to lock shard's directory at [" + indexPath + "], is Elasticsearch still running?";

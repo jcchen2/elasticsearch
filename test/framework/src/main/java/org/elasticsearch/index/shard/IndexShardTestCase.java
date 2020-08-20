@@ -65,6 +65,7 @@ import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.similarity.SimilarityService;
 import org.elasticsearch.index.snapshots.IndexShardSnapshotStatus;
 import org.elasticsearch.index.store.Store;
+import org.elasticsearch.index.translog.DefaultChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
 import org.elasticsearch.indices.breaker.HierarchyCircuitBreakerService;
@@ -384,6 +385,7 @@ public abstract class IndexShardTestCase extends ESTestCase {
                     indexSettings,
                     shardPath,
                     store,
+                    new DefaultChannelFactory(),
                     () -> null,
                     indexCache,
                     mapperService,

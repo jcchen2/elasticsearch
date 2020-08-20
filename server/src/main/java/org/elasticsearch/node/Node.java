@@ -105,6 +105,7 @@ import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.IndexingPressure;
 import org.elasticsearch.index.analysis.AnalysisRegistry;
 import org.elasticsearch.index.engine.EngineFactory;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.indices.IndicesModule;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.indices.ShardLimitValidator;
@@ -467,6 +468,13 @@ public class Node implements Closeable {
                     .flatMap(m -> m.entrySet().stream())
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
+            final Collection<Function<IndexSettings, ChannelFactory>> translogChannelFactoryProviders =
+                pluginsService.filterPlugins(IndexStorePlugin.class)
+                    .stream()
+                    .map(IndexStorePlugin::getChannelFactoryProvider)
+                    .filter(provider -> provider != null)
+                    .collect(Collectors.toList());
+
             final Map<String, Collection<SystemIndexDescriptor>> systemIndexDescriptorMap = pluginsService
                 .filterPlugins(SystemIndexPlugin.class)
                 .stream()
@@ -484,7 +492,7 @@ public class Node implements Closeable {
                     clusterModule.getIndexNameExpressionResolver(), indicesModule.getMapperRegistry(), namedWriteableRegistry,
                     threadPool, settingsModule.getIndexScopedSettings(), circuitBreakerService, bigArrays, scriptService,
                     clusterService, client, metaStateService, engineFactoryProviders, indexStoreFactories,
-                    searchModule.getValuesSourceRegistry(), recoveryStateFactories);
+                    searchModule.getValuesSourceRegistry(), recoveryStateFactories, translogChannelFactoryProviders);
 
             final AliasValidator aliasValidator = new AliasValidator();
 

@@ -95,6 +95,8 @@ import org.elasticsearch.index.seqno.RetentionLeases;
 import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.store.Store;
+import org.elasticsearch.index.translog.ChannelFactory;
+import org.elasticsearch.index.translog.DefaultChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.index.translog.TranslogConfig;
 import org.elasticsearch.index.translog.TranslogDeletionPolicy;
@@ -233,7 +235,7 @@ public abstract class EngineTestCase extends ESTestCase {
         return new EngineConfig(config.getShardId(), config.getAllocationId(), config.getThreadPool(), config.getIndexSettings(),
             config.getWarmer(), config.getStore(), config.getMergePolicy(), config.getAnalyzer(), config.getSimilarity(),
             new CodecService(null, logger), config.getEventListener(), config.getQueryCache(), config.getQueryCachingPolicy(),
-            config.getTranslogConfig(), config.getFlushMergesAfter(),
+            config.getTranslogConfig(), config.getTranslogChannelFactory(), config.getFlushMergesAfter(),
             config.getExternalRefreshListener(), Collections.emptyList(), config.getIndexSort(),
             config.getCircuitBreakerService(), globalCheckpointSupplier, config.retentionLeasesSupplier(),
                 config.getPrimaryTermSupplier(), tombstoneDocSupplier());
@@ -243,7 +245,7 @@ public abstract class EngineTestCase extends ESTestCase {
         return new EngineConfig(config.getShardId(), config.getAllocationId(), config.getThreadPool(), config.getIndexSettings(),
                 config.getWarmer(), config.getStore(), config.getMergePolicy(), analyzer, config.getSimilarity(),
                 new CodecService(null, logger), config.getEventListener(), config.getQueryCache(), config.getQueryCachingPolicy(),
-                config.getTranslogConfig(), config.getFlushMergesAfter(),
+                config.getTranslogConfig(), config.getTranslogChannelFactory(), config.getFlushMergesAfter(),
                 config.getExternalRefreshListener(), Collections.emptyList(), config.getIndexSort(),
                 config.getCircuitBreakerService(), config.getGlobalCheckpointSupplier(), config.retentionLeasesSupplier(),
                 config.getPrimaryTermSupplier(), config.getTombstoneDocSupplier());
@@ -253,7 +255,7 @@ public abstract class EngineTestCase extends ESTestCase {
         return new EngineConfig(config.getShardId(), config.getAllocationId(), config.getThreadPool(), config.getIndexSettings(),
             config.getWarmer(), config.getStore(), mergePolicy, config.getAnalyzer(), config.getSimilarity(),
             new CodecService(null, logger), config.getEventListener(), config.getQueryCache(), config.getQueryCachingPolicy(),
-            config.getTranslogConfig(), config.getFlushMergesAfter(),
+            config.getTranslogConfig(), config.getTranslogChannelFactory(), config.getFlushMergesAfter(),
             config.getExternalRefreshListener(), Collections.emptyList(), config.getIndexSort(),
             config.getCircuitBreakerService(), config.getGlobalCheckpointSupplier(), config.retentionLeasesSupplier(),
                 config.getPrimaryTermSupplier(), config.getTombstoneDocSupplier());
@@ -413,9 +415,10 @@ public abstract class EngineTestCase extends ESTestCase {
 
     protected Translog createTranslog(Path translogPath, LongSupplier primaryTermSupplier) throws IOException {
         TranslogConfig translogConfig = new TranslogConfig(shardId, translogPath, INDEX_SETTINGS, BigArrays.NON_RECYCLING_INSTANCE);
+        ChannelFactory channelFactory = new DefaultChannelFactory();
         String translogUUID = Translog.createEmptyTranslog(translogPath, SequenceNumbers.NO_OPS_PERFORMED, shardId,
-            primaryTermSupplier.getAsLong());
-        return new Translog(translogConfig, translogUUID, new TranslogDeletionPolicy(),
+            primaryTermSupplier.getAsLong(), channelFactory);
+        return new Translog(translogConfig, channelFactory, translogUUID, new TranslogDeletionPolicy(),
             () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTermSupplier, seqNo -> {});
     }
 
@@ -519,7 +522,7 @@ public abstract class EngineTestCase extends ESTestCase {
         if (Lucene.indexExists(directory) == false) {
             store.createEmpty(config.getIndexSettings().getIndexVersionCreated().luceneVersion);
             final String translogUuid = Translog.createEmptyTranslog(config.getTranslogConfig().getTranslogPath(),
-                SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
+                SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), config.getTranslogChannelFactory());
             store.associateIndexWithNewTranslog(translogUuid);
 
         }
@@ -696,6 +699,7 @@ public abstract class EngineTestCase extends ESTestCase {
                 IndexSearcher.getDefaultQueryCache(),
                 IndexSearcher.getDefaultQueryCachingPolicy(),
                 translogConfig,
+                new DefaultChannelFactory(),
                 TimeValue.timeValueMinutes(5),
                 extRefreshListenerList,
                 intRefreshListenerList,
@@ -716,7 +720,7 @@ public abstract class EngineTestCase extends ESTestCase {
         return new EngineConfig(config.getShardId(), config.getAllocationId(), config.getThreadPool(),
             indexSettings, config.getWarmer(), store, config.getMergePolicy(), config.getAnalyzer(), config.getSimilarity(),
             new CodecService(null, logger), config.getEventListener(), config.getQueryCache(), config.getQueryCachingPolicy(),
-            translogConfig, config.getFlushMergesAfter(), config.getExternalRefreshListener(),
+            translogConfig, config.getTranslogChannelFactory(), config.getFlushMergesAfter(), config.getExternalRefreshListener(),
             config.getInternalRefreshListener(), config.getIndexSort(), config.getCircuitBreakerService(),
             config.getGlobalCheckpointSupplier(), config.retentionLeasesSupplier(),
             config.getPrimaryTermSupplier(), tombstoneDocSupplier);

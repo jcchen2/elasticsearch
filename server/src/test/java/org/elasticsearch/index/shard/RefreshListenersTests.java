@@ -54,6 +54,8 @@ import org.elasticsearch.index.mapper.SeqNoFieldMapper;
 import org.elasticsearch.index.seqno.RetentionLeases;
 import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.store.Store;
+import org.elasticsearch.index.translog.ChannelFactory;
+import org.elasticsearch.index.translog.DefaultChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.index.translog.TranslogConfig;
 import org.elasticsearch.indices.breaker.NoneCircuitBreakerService;
@@ -123,8 +125,10 @@ public class RefreshListenersTests extends ESTestCase {
         };
         store.createEmpty(Version.CURRENT.luceneVersion);
         final long primaryTerm = randomNonNegativeLong();
+        final ChannelFactory translogChannelFactory = new DefaultChannelFactory();
         final String translogUUID =
-            Translog.createEmptyTranslog(translogConfig.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm);
+            Translog.createEmptyTranslog(translogConfig.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId,
+                primaryTerm, translogChannelFactory);
         store.associateIndexWithNewTranslog(translogUUID);
         EngineConfig config = new EngineConfig(
                 shardId,
@@ -141,6 +145,7 @@ public class RefreshListenersTests extends ESTestCase {
                 IndexSearcher.getDefaultQueryCache(),
                 IndexSearcher.getDefaultQueryCachingPolicy(),
                 translogConfig,
+                translogChannelFactory,
                 TimeValue.timeValueMinutes(5),
                 Collections.singletonList(listeners),
                 Collections.emptyList(),

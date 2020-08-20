@@ -165,10 +165,14 @@ public class RemoveCorruptedShardDataCommandTests extends IndexShardTestCase {
         indexPath = shardPath.resolveIndex();
     }
 
+    private RemoveCorruptedShardDataCommand newCommand() {
+        return new RemoveCorruptedShardDataCommand(idxSettings -> indexShard.getTranslogChannelFactory());
+    }
+
     public void testShardLock() throws Exception {
         indexDocs(indexShard, true);
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = newCommand();
         final MockTerminal t = new MockTerminal();
         final OptionParser parser = command.getParser();
 
@@ -212,7 +216,7 @@ public class RemoveCorruptedShardDataCommandTests extends IndexShardTestCase {
             closeShards(corruptedShard);
         }
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = newCommand();
         final MockTerminal t = new MockTerminal();
         final OptionParser parser = command.getParser();
 
@@ -277,7 +281,7 @@ public class RemoveCorruptedShardDataCommandTests extends IndexShardTestCase {
 
         closeShard(corruptedShard, false); // translog is corrupted already - do not check consistency
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = newCommand();
         final MockTerminal t = new MockTerminal();
         final OptionParser parser = command.getParser();
 
@@ -332,7 +336,7 @@ public class RemoveCorruptedShardDataCommandTests extends IndexShardTestCase {
         }
         TestTranslog.corruptRandomTranslogFile(logger, random(), translogPath);
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = newCommand();
         final MockTerminal t = new MockTerminal();
         final OptionParser parser = command.getParser();
 
@@ -382,7 +386,7 @@ public class RemoveCorruptedShardDataCommandTests extends IndexShardTestCase {
         // close shard
         closeShards(indexShard);
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = newCommand();
         final OptionParser parser = command.getParser();
 
         // `--index index_name --shard-id 0` has to be resolved to indexPath
@@ -401,7 +405,7 @@ public class RemoveCorruptedShardDataCommandTests extends IndexShardTestCase {
         indexDocs(indexShard, true);
         closeShards(indexShard);
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = newCommand();
         final MockTerminal t = new MockTerminal();
         final OptionParser parser = command.getParser();
 
@@ -417,7 +421,7 @@ public class RemoveCorruptedShardDataCommandTests extends IndexShardTestCase {
         indexDocs(indexShard, true);
         closeShards(indexShard);
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = newCommand();
         final MockTerminal t = new MockTerminal();
         final OptionParser parser = command.getParser();
 
@@ -443,7 +447,7 @@ public class RemoveCorruptedShardDataCommandTests extends IndexShardTestCase {
         expectThrows(IndexShardRecoveryException.class, () -> newStartedShard(p -> corruptedShard, true));
         closeShards(corruptedShard);
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = newCommand();
         final MockTerminal t = new MockTerminal();
         final OptionParser parser = command.getParser();
 

@@ -53,14 +53,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 
 public class TruncateTranslogAction {
 
     protected static final Logger logger = LogManager.getLogger(TruncateTranslogAction.class);
     private final NamedXContentRegistry namedXContentRegistry;
+    private final Function<IndexSettings, ChannelFactory> channelFactoryProvider;
 
-    public TruncateTranslogAction(NamedXContentRegistry namedXContentRegistry) {
+    public TruncateTranslogAction(NamedXContentRegistry namedXContentRegistry,
+                                  Function<IndexSettings, ChannelFactory> channelFactoryProvider) {
         this.namedXContentRegistry = namedXContentRegistry;
+        this.channelFactoryProvider = channelFactoryProvider;
     }
 
     public Tuple<RemoveCorruptedShardDataCommand.CleanStatus, String> getCleanStatus(ShardPath shardPath,
@@ -103,7 +107,7 @@ public class TruncateTranslogAction {
         return Tuple.tuple(RemoveCorruptedShardDataCommand.CleanStatus.CORRUPTED, details);
     }
 
-    public void execute(Terminal terminal, ShardPath shardPath, Directory indexDirectory) throws IOException {
+    public void execute(Terminal terminal, ShardPath shardPath, ClusterState clusterState, Directory indexDirectory) throws IOException {
         final Path indexPath = shardPath.resolveIndex();
         final Path translogPath = shardPath.resolveTranslog();
 
@@ -148,7 +152,10 @@ public class TruncateTranslogAction {
         Path realEmptyTranslog = translogPath.resolve(Translog.TRANSLOG_FILE_PREFIX + gen + Translog.TRANSLOG_FILE_SUFFIX);
 
         // Write empty checkpoint and translog to empty files
-        int translogLen = writeEmptyTranslog(tempEmptyTranslog, translogUUID);
+        final IndexMetadata indexMetadata = clusterState.metadata().getIndexSafe(shardPath.getShardId().getIndex());
+        final IndexSettings indexSettings = new IndexSettings(indexMetadata, Settings.EMPTY);
+        final ChannelFactory channelFactory = channelFactoryProvider.apply(indexSettings);
+        int translogLen = writeEmptyTranslog(tempEmptyTranslog, translogUUID, channelFactory);
         writeEmptyCheckpoint(tempEmptyCheckpoint, translogLen, gen, globalCheckpoint);
 
         terminal.println("Removing existing translog files");
@@ -167,14 +174,15 @@ public class TruncateTranslogAction {
         // perform clean check of translog instead of corrupted marker file
         try {
             final Path translogPath = shardPath.resolveTranslog();
-            final long translogGlobalCheckpoint = Translog.readGlobalCheckpoint(translogPath, translogUUID);
             final IndexMetadata indexMetadata = clusterState.metadata().getIndexSafe(shardPath.getShardId().getIndex());
             final IndexSettings indexSettings = new IndexSettings(indexMetadata, Settings.EMPTY);
+            final ChannelFactory channelFactory = channelFactoryProvider.apply(indexSettings);
+            final long translogGlobalCheckpoint = Translog.readGlobalCheckpoint(translogPath, translogUUID, channelFactory);
             final TranslogConfig translogConfig = new TranslogConfig(shardPath.getShardId(), translogPath,
                 indexSettings, BigArrays.NON_RECYCLING_INSTANCE);
             long primaryTerm = indexSettings.getIndexMetadata().primaryTerm(shardPath.getShardId().id());
             final TranslogDeletionPolicy translogDeletionPolicy = new TranslogDeletionPolicy();
-            try (Translog translog = new Translog(translogConfig, translogUUID,
+            try (Translog translog = new Translog(translogConfig, channelFactory, translogUUID,
                 translogDeletionPolicy, () -> translogGlobalCheckpoint, () -> primaryTerm, seqNo -> {});
                  Translog.Snapshot snapshot = translog.newSnapshot(0, Long.MAX_VALUE)) {
                 //noinspection StatementWithEmptyBody we are just checking that we can iterate through the whole snapshot
@@ -201,8 +209,8 @@ public class TruncateTranslogAction {
     /**
      * Write a translog containing the given translog UUID to the given location. Returns the number of bytes written.
      */
-    private static int writeEmptyTranslog(Path filename, String translogUUID) throws IOException {
-        try (FileChannel fc = FileChannel.open(filename, StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW)) {
+    private static int writeEmptyTranslog(Path filename, String translogUUID, ChannelFactory channelFactory) throws IOException {
+        try (FileChannel fc = channelFactory.open(filename, StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW)) {
             TranslogHeader header = new TranslogHeader(translogUUID, SequenceNumbers.UNASSIGNED_PRIMARY_TERM);
             header.write(fc);
             return header.sizeInBytes();

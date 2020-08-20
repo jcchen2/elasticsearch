@@ -55,6 +55,8 @@ import org.elasticsearch.index.shard.IndexingOperationListener;
 import org.elasticsearch.index.shard.SearchOperationListener;
 import org.elasticsearch.index.similarity.SimilarityService;
 import org.elasticsearch.index.store.FsDirectoryFactory;
+import org.elasticsearch.index.translog.ChannelFactory;
+import org.elasticsearch.index.translog.DefaultChannelFactory;
 import org.elasticsearch.indices.IndicesQueryCache;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
 import org.elasticsearch.indices.fielddata.cache.IndicesFieldDataCache;
@@ -67,10 +69,12 @@ import org.elasticsearch.threadpool.ThreadPool;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -79,6 +83,7 @@ import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * IndexModule represents the central extension point for index level custom implementations like:
@@ -134,6 +139,7 @@ public final class IndexModule {
     private final Set<IndexEventListener> indexEventListeners = new HashSet<>();
     private final Map<String, TriFunction<Settings, Version, ScriptService, Similarity>> similarities = new HashMap<>();
     private final Map<String, IndexStorePlugin.DirectoryFactory> directoryFactories;
+    private final Collection<Function<IndexSettings, ChannelFactory>> translogChannelFactoryProviders;
     private final SetOnce<BiFunction<IndexSettings, IndicesQueryCache, QueryCache>> forceQueryCacheProvider = new SetOnce<>();
     private final List<SearchOperationListener> searchOperationListeners = new ArrayList<>();
     private final List<IndexingOperationListener> indexOperationListeners = new ArrayList<>();
@@ -150,6 +156,7 @@ public final class IndexModule {
      * @param analysisRegistry    the analysis registry
      * @param engineFactory       the engine factory
      * @param directoryFactories the available store types
+     * @param translogChannelFactoryProviders the available translog ChannelFactory providers
      */
     public IndexModule(
             final IndexSettings indexSettings,
@@ -158,13 +165,15 @@ public final class IndexModule {
             final Map<String, IndexStorePlugin.DirectoryFactory> directoryFactories,
             final BooleanSupplier allowExpensiveQueries,
             final IndexNameExpressionResolver expressionResolver,
-            final Map<String, IndexStorePlugin.RecoveryStateFactory> recoveryStateFactories) {
+            final Map<String, IndexStorePlugin.RecoveryStateFactory> recoveryStateFactories,
+            final Collection<Function<IndexSettings, ChannelFactory>> translogChannelFactoryProviders) {
         this.indexSettings = indexSettings;
         this.analysisRegistry = analysisRegistry;
         this.engineFactory = Objects.requireNonNull(engineFactory);
         this.searchOperationListeners.add(new SearchSlowLog(indexSettings));
         this.indexOperationListeners.add(new IndexingSlowLog(indexSettings));
         this.directoryFactories = Collections.unmodifiableMap(directoryFactories);
+        this.translogChannelFactoryProviders = translogChannelFactoryProviders;
         this.allowExpensiveQueries = allowExpensiveQueries;
         this.expressionResolver = expressionResolver;
         this.recoveryStateFactories = recoveryStateFactories;
@@ -420,6 +429,7 @@ public final class IndexModule {
         eventListener.beforeIndexCreated(indexSettings.getIndex(), indexSettings.getSettings());
         final IndexStorePlugin.DirectoryFactory directoryFactory = getDirectoryFactory(indexSettings, directoryFactories);
         final IndexStorePlugin.RecoveryStateFactory recoveryStateFactory = getRecoveryStateFactory(indexSettings, recoveryStateFactories);
+        final ChannelFactory translogChannelFactory = getTranslogChannelFactory(indexSettings);
         QueryCache queryCache = null;
         IndexAnalyzers indexAnalyzers = null;
         boolean success = false;
@@ -440,9 +450,9 @@ public final class IndexModule {
             final IndexService indexService = new IndexService(indexSettings, indexCreationContext, environment, xContentRegistry,
                 new SimilarityService(indexSettings, scriptService, similarities), shardStoreDeleter, indexAnalyzers,
                 engineFactory, circuitBreakerService, bigArrays, threadPool, scriptService, clusterService, client, queryCache,
-                directoryFactory, eventListener, readerWrapperFactory, mapperRegistry, indicesFieldDataCache, searchOperationListeners,
-                indexOperationListeners, namedWriteableRegistry, idFieldDataEnabled, allowExpensiveQueries, expressionResolver,
-                valuesSourceRegistry, recoveryStateFactory);
+                directoryFactory, translogChannelFactory, eventListener, readerWrapperFactory, mapperRegistry, indicesFieldDataCache,
+                searchOperationListeners, indexOperationListeners, namedWriteableRegistry, idFieldDataEnabled, allowExpensiveQueries,
+                expressionResolver, valuesSourceRegistry, recoveryStateFactory);
             success = true;
             return indexService;
         } finally {
@@ -495,6 +505,31 @@ public final class IndexModule {
         }
 
         return factory;
+    }
+
+    private ChannelFactory getTranslogChannelFactory(final IndexSettings idxSettings) {
+        final List<ChannelFactory> channelFactories =
+            translogChannelFactoryProviders
+                .stream()
+                .map(channelFactoryProvider -> channelFactoryProvider.apply(idxSettings))
+                .collect(Collectors.toList());
+        if (channelFactories.isEmpty()) {
+            return new DefaultChannelFactory();
+        } else if (channelFactories.size() == 1) {
+            return channelFactories.get(0);
+        } else {
+            final String message = String.format(
+                Locale.ROOT,
+                "multiple translog ChannelFactory provided for %s: %s",
+                idxSettings.getIndex(),
+                channelFactories
+                    .stream()
+                    .map(t -> {
+                        return "[" + t.getClass().getName() + "]";
+                    })
+                    .collect(Collectors.joining(",")));
+            throw new IllegalStateException(message);
+        }
     }
 
     /**

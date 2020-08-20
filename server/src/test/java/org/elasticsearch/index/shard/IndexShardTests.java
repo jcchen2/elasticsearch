@@ -4097,10 +4097,10 @@ public class IndexShardTests extends IndexShardTestCase {
             EngineConfig configWithWarmer = new EngineConfig(config.getShardId(), config.getAllocationId(), config.getThreadPool(),
                 config.getIndexSettings(), warmer, config.getStore(), config.getMergePolicy(), config.getAnalyzer(),
                 config.getSimilarity(), new CodecService(null, logger), config.getEventListener(), config.getQueryCache(),
-                config.getQueryCachingPolicy(), config.getTranslogConfig(), config.getFlushMergesAfter(),
-                config.getExternalRefreshListener(), config.getInternalRefreshListener(), config.getIndexSort(),
-                config.getCircuitBreakerService(), config.getGlobalCheckpointSupplier(), config.retentionLeasesSupplier(),
-                config.getPrimaryTermSupplier(), config.getTombstoneDocSupplier());
+                config.getQueryCachingPolicy(), config.getTranslogConfig(), config.getTranslogChannelFactory(),
+                config.getFlushMergesAfter(), config.getExternalRefreshListener(), config.getInternalRefreshListener(),
+                config.getIndexSort(), config.getCircuitBreakerService(), config.getGlobalCheckpointSupplier(),
+                config.retentionLeasesSupplier(), config.getPrimaryTermSupplier(), config.getTombstoneDocSupplier());
             return new InternalEngine(configWithWarmer);
         });
         Thread recoveryThread = new Thread(() -> expectThrows(AlreadyClosedException.class, () -> recoverShardFromStore(shard)));

@@ -379,7 +379,7 @@ public class IndexingMemoryControllerTests extends IndexShardTestCase {
         return new EngineConfig(config.getShardId(), config.getAllocationId(), config.getThreadPool(),
             config.getIndexSettings(), config.getWarmer(), config.getStore(), config.getMergePolicy(), config.getAnalyzer(),
             config.getSimilarity(), new CodecService(null, logger), config.getEventListener(), config.getQueryCache(),
-            config.getQueryCachingPolicy(), config.getTranslogConfig(), config.getFlushMergesAfter(),
+            config.getQueryCachingPolicy(), config.getTranslogConfig(), config.getTranslogChannelFactory(), config.getFlushMergesAfter(),
             config.getExternalRefreshListener(), internalRefreshListener, config.getIndexSort(),
             config.getCircuitBreakerService(), config.getGlobalCheckpointSupplier(), config.retentionLeasesSupplier(),
             config.getPrimaryTermSupplier(), config.getTombstoneDocSupplier());

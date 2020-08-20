@@ -150,6 +150,7 @@ public class TranslogTests extends ESTestCase {
     protected final ShardId shardId = new ShardId("index", "_na_", 1);
 
     protected Translog translog;
+    protected ChannelFactory channelFactory;
     private AtomicLong globalCheckpoint;
     protected Path translogDir;
     // A default primary term is used by translog instances created in this test.
@@ -192,13 +193,14 @@ public class TranslogTests extends ESTestCase {
 
     protected Translog createTranslog(TranslogConfig config) throws IOException {
         String translogUUID =
-            Translog.createEmptyTranslog(config.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
-        return new Translog(config, translogUUID, new TranslogDeletionPolicy(),
+            Translog.createEmptyTranslog(config.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(),
+                channelFactory);
+        return new Translog(config, channelFactory,translogUUID, new TranslogDeletionPolicy(),
             () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, getPersistedSeqNoConsumer());
     }
 
     protected Translog openTranslog(TranslogConfig config, String translogUUID) throws IOException {
-        return new Translog(config, translogUUID, new TranslogDeletionPolicy(),
+        return new Translog(config, channelFactory, translogUUID, new TranslogDeletionPolicy(),
             () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, getPersistedSeqNoConsumer());
     }
 
@@ -210,6 +212,7 @@ public class TranslogTests extends ESTestCase {
         primaryTerm.set(randomLongBetween(1, Integer.MAX_VALUE));
         // if a previous test failed we clean up things here
         translogDir = createTempDir();
+        channelFactory = new DefaultChannelFactory();
         translog = create(translogDir);
     }
 
@@ -227,9 +230,10 @@ public class TranslogTests extends ESTestCase {
     private Translog create(Path path) throws IOException {
         globalCheckpoint = new AtomicLong(SequenceNumbers.NO_OPS_PERFORMED);
         final TranslogConfig translogConfig = getTranslogConfig(path);
-        final String translogUUID = Translog.createEmptyTranslog(path, SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
-        return new Translog(translogConfig, translogUUID, new TranslogDeletionPolicy(), () -> globalCheckpoint.get(), primaryTerm::get,
-            getPersistedSeqNoConsumer());
+        final String translogUUID = Translog.createEmptyTranslog(path, SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(),
+            channelFactory);
+        return new Translog(translogConfig, channelFactory, translogUUID, new TranslogDeletionPolicy(), () -> globalCheckpoint.get(),
+            primaryTerm::get, getPersistedSeqNoConsumer());
     }
 
     private TranslogConfig getTranslogConfig(final Path path) {
@@ -1377,7 +1381,7 @@ public class TranslogTests extends ESTestCase {
                 assertNull(snapshot.next());
             }
         } else {
-            translog = new Translog(config, translogGeneration.translogUUID, translog.getDeletionPolicy(),
+            translog = new Translog(config, channelFactory, translogGeneration.translogUUID, translog.getDeletionPolicy(),
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {});
             assertEquals("lastCommitted must be 1 less than current",
                 translogGeneration.translogFileGeneration + 1, translog.currentFileGeneration());
@@ -1419,7 +1423,7 @@ public class TranslogTests extends ESTestCase {
         TranslogConfig config = translog.getConfig();
         final String translogUUID = translog.getTranslogUUID();
         final TranslogDeletionPolicy deletionPolicy = translog.getDeletionPolicy();
-        try (Translog translog = new Translog(config, translogUUID, deletionPolicy,
+        try (Translog translog = new Translog(config, channelFactory, translogUUID, deletionPolicy,
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
             assertNotNull(translogGeneration);
             assertEquals("lastCommitted must be 2 less than current - we never finished the commit",
@@ -1435,7 +1439,7 @@ public class TranslogTests extends ESTestCase {
             }
         }
         if (randomBoolean()) { // recover twice
-            try (Translog translog = new Translog(config, translogUUID, deletionPolicy,
+            try (Translog translog = new Translog(config, channelFactory, translogUUID, deletionPolicy,
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
                 assertNotNull(translogGeneration);
                 assertEquals("lastCommitted must be 3 less than current - we never finished the commit and run recovery twice",
@@ -1484,7 +1488,7 @@ public class TranslogTests extends ESTestCase {
 
         final String translogUUID = translog.getTranslogUUID();
         final TranslogDeletionPolicy deletionPolicy = translog.getDeletionPolicy();
-        try (Translog translog = new Translog(config, translogUUID, deletionPolicy,
+        try (Translog translog = new Translog(config, channelFactory, translogUUID, deletionPolicy,
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
             assertNotNull(translogGeneration);
             assertEquals("lastCommitted must be 2 less than current - we never finished the commit",
@@ -1501,7 +1505,7 @@ public class TranslogTests extends ESTestCase {
         }
 
         if (randomBoolean()) { // recover twice
-            try (Translog translog = new Translog(config, translogUUID, deletionPolicy,
+            try (Translog translog = new Translog(config, channelFactory, translogUUID, deletionPolicy,
                     () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
                 assertNotNull(translogGeneration);
                 assertEquals("lastCommitted must be 3 less than current - we never finished the commit and run recovery twice",
@@ -1548,7 +1552,8 @@ public class TranslogTests extends ESTestCase {
         final String translogUUID = translog.getTranslogUUID();
         final TranslogDeletionPolicy deletionPolicy = translog.getDeletionPolicy();
         final TranslogCorruptedException translogCorruptedException = expectThrows(TranslogCorruptedException.class, () ->
-            new Translog(config, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> { }));
+            new Translog(config, channelFactory, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
+                seqNo -> { }));
         assertThat(translogCorruptedException.getMessage(), endsWith(
             "] is corrupted, checkpoint file translog-3.ckp already exists but has corrupted content: expected Checkpoint{offset=2750, " +
                 "numOps=55, generation=3, minSeqNo=45, maxSeqNo=99, globalCheckpoint=-1, minTranslogGeneration=1, trimmedAboveSeqNo=-2} " +
@@ -1556,7 +1561,7 @@ public class TranslogTests extends ESTestCase {
                 "minTranslogGeneration=0, trimmedAboveSeqNo=-2}"));
         Checkpoint.write(FileChannel::open, config.getTranslogPath().resolve(Translog.getCommitCheckpointFileName(read.generation)),
             read, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
-        try (Translog translog = new Translog(config, translogUUID, deletionPolicy,
+        try (Translog translog = new Translog(config, channelFactory, translogUUID, deletionPolicy,
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
             assertNotNull(translogGeneration);
             assertEquals("lastCommitted must be 2 less than current - we never finished the commit",
@@ -1828,14 +1833,14 @@ public class TranslogTests extends ESTestCase {
         final String foreignTranslog = randomRealisticUnicodeOfCodepointLengthBetween(1,
             translogGeneration.translogUUID.length());
         try {
-            new Translog(config, foreignTranslog, new TranslogDeletionPolicy(), () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
-                seqNo -> {});
+            new Translog(config, channelFactory, foreignTranslog, new TranslogDeletionPolicy(), () -> SequenceNumbers.NO_OPS_PERFORMED,
+                primaryTerm::get, seqNo -> {});
             fail("translog doesn't belong to this UUID");
         } catch (TranslogCorruptedException ex) {
 
         }
-        this.translog = new Translog(config, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
-            seqNo -> {});
+        this.translog = new Translog(config, channelFactory, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED,
+            primaryTerm::get, seqNo -> {});
         try (Translog.Snapshot snapshot = this.translog.newSnapshot(randomLongBetween(0, firstUncommitted), Long.MAX_VALUE)) {
             for (int i = firstUncommitted; i < translogOperations; i++) {
                 Translog.Operation next = snapshot.next();
@@ -2027,7 +2032,7 @@ public class TranslogTests extends ESTestCase {
         translog.close(); // we are closed
         final String translogUUID = translog.getTranslogUUID();
         final TranslogDeletionPolicy deletionPolicy = translog.getDeletionPolicy();
-        try (Translog tlog = new Translog(config, translogUUID, deletionPolicy,
+        try (Translog tlog = new Translog(config, channelFactory, translogUUID, deletionPolicy,
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
             assertEquals("lastCommitted must be 1 less than current",
                 translogGeneration.translogFileGeneration + 1, tlog.currentFileGeneration());
@@ -2165,7 +2170,7 @@ public class TranslogTests extends ESTestCase {
             // drop all that haven't been synced
             writtenOperations.removeIf(next -> checkpoint.offset < (next.location.translogLocation + next.location.size));
             try (Translog tlog =
-                     new Translog(config, translogUUID, new TranslogDeletionPolicy(),
+                     new Translog(config, channelFactory, translogUUID, new TranslogDeletionPolicy(),
                          () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {});
                  Translog.Snapshot snapshot = tlog.newSnapshot()) {
                 if (writtenOperations.size() != snapshot.totalOperations()) {
@@ -2216,7 +2221,7 @@ public class TranslogTests extends ESTestCase {
         TranslogConfig config = translog.getConfig();
         final TranslogDeletionPolicy deletionPolicy = new TranslogDeletionPolicy();
         deletionPolicy.setLocalCheckpointOfSafeCommit(localCheckpoint);
-        translog = new Translog(config, translog.getTranslogUUID(), deletionPolicy,
+        translog = new Translog(config, channelFactory, translog.getTranslogUUID(), deletionPolicy,
             () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {});
         assertThat(translog.getMinFileGeneration(), equalTo(1L));
         // no trimming done yet, just recovered
@@ -2274,7 +2279,7 @@ public class TranslogTests extends ESTestCase {
         }
         final TranslogDeletionPolicy deletionPolicy = new TranslogDeletionPolicy();
         deletionPolicy.setLocalCheckpointOfSafeCommit(localCheckpoint);
-        try (Translog translog = new Translog(config, translogUUID, deletionPolicy,
+        try (Translog translog = new Translog(config, channelFactory, translogUUID, deletionPolicy,
             () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
             // we don't know when things broke exactly
             assertThat(translog.getMinFileGeneration(), greaterThanOrEqualTo(1L));
@@ -2356,14 +2361,10 @@ public class TranslogTests extends ESTestCase {
         };
         if (translogUUID == null) {
             translogUUID = Translog.createEmptyTranslog(
-                config.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, channelFactory, primaryTerm.get());
+                config.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), channelFactory);
         }
-        return new Translog(config, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
+        return new Translog(config, channelFactory, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
             seqNo -> {}) {
-            @Override
-            ChannelFactory getChannelFactory() {
-                return channelFactory;
-            }
 
             @Override
             void deleteReaderFiles(TranslogReader reader) {
@@ -2472,7 +2473,7 @@ public class TranslogTests extends ESTestCase {
         translog.add(new Translog.Index("boom", 0, primaryTerm.get(), "boom".getBytes(Charset.forName("UTF-8"))));
         translog.close();
         try {
-            new Translog(config, translog.getTranslogUUID(), new TranslogDeletionPolicy(),
+            new Translog(config, channelFactory, translog.getTranslogUUID(), new TranslogDeletionPolicy(),
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {}) {
                 @Override
                 protected TranslogWriter createWriter(long fileGeneration, long initialMinTranslogGen, long initialGlobalCheckpoint,
@@ -2536,7 +2537,7 @@ public class TranslogTests extends ESTestCase {
         // don't copy the new file
         Files.createFile(config.getTranslogPath().resolve("translog-" + (read.generation + 1) + ".tlog"));
 
-        TranslogException ex = expectThrows(TranslogException.class, () -> new Translog(config, translog.getTranslogUUID(),
+        TranslogException ex = expectThrows(TranslogException.class, () -> new Translog(config, channelFactory, translog.getTranslogUUID(),
             translog.getDeletionPolicy(), () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {}));
         assertEquals(ex.getMessage(), "failed to create new translog file");
         assertEquals(ex.getCause().getClass(), FileAlreadyExistsException.class);
@@ -2556,7 +2557,7 @@ public class TranslogTests extends ESTestCase {
         Files.createFile(config.getTranslogPath().resolve("translog-" + (read.generation + 1) + ".tlog"));
         // we add N+1 and N+2 to ensure we only delete the N+1 file and never jump ahead and wipe without the right condition
         Files.createFile(config.getTranslogPath().resolve("translog-" + (read.generation + 2) + ".tlog"));
-        try (Translog tlog = new Translog(config, translogUUID, deletionPolicy,
+        try (Translog tlog = new Translog(config, channelFactory, translogUUID, deletionPolicy,
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
             assertFalse(tlog.syncNeeded());
             try (Translog.Snapshot snapshot = tlog.newSnapshot()) {
@@ -2571,8 +2572,8 @@ public class TranslogTests extends ESTestCase {
         }
 
         TranslogException ex = expectThrows(TranslogException.class,
-                () -> new Translog(config, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
-                    seqNo -> {}));
+                () -> new Translog(config, channelFactory, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED,
+                    primaryTerm::get, seqNo -> {}));
         assertEquals(ex.getMessage(), "failed to create new translog file");
         assertEquals(ex.getCause().getClass(), FileAlreadyExistsException.class);
     }
@@ -2679,9 +2680,9 @@ public class TranslogTests extends ESTestCase {
             if (generationUUID == null) {
                 // we never managed to successfully create a translog, make it
                 generationUUID = Translog.createEmptyTranslog(config.getTranslogPath(),
-                    SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
+                    SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), channelFactory);
             }
-            try (Translog translog = new Translog(config, generationUUID, deletionPolicy,
+            try (Translog translog = new Translog(config, channelFactory, generationUUID, deletionPolicy,
                 () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {});
                  Translog.Snapshot snapshot = translog.newSnapshot(localCheckpointOfSafeCommit + 1, Long.MAX_VALUE)) {
                 assertEquals(syncedDocs.size(), snapshot.totalOperations());
@@ -2714,8 +2715,8 @@ public class TranslogTests extends ESTestCase {
     public void testCheckpointOnDiskFull() throws IOException {
         final Checkpoint checkpoint = randomCheckpoint();
         Path tempDir = createTempDir();
-        Checkpoint.write(FileChannel::open, tempDir.resolve("foo.cpk"), checkpoint,
-            StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW);
+        Checkpoint.write(FileChannel::open, tempDir.resolve("foo.cpk"), checkpoint, StandardOpenOption.WRITE,
+            StandardOpenOption.CREATE_NEW);
         final Checkpoint checkpoint2 = randomCheckpoint();
         try {
             Checkpoint.write((p, o) -> {
@@ -2756,16 +2757,16 @@ public class TranslogTests extends ESTestCase {
         final String translogUUID = translog.getTranslogUUID();
         final TranslogDeletionPolicy deletionPolicy = new TranslogDeletionPolicy();
         translog.close();
-        translog = new Translog(config, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
-            seqNo -> {});
+        translog = new Translog(config, channelFactory, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED,
+            primaryTerm::get, seqNo -> {});
         translog.add(new Translog.Index("2", 1, primaryTerm.get(), new byte[]{2}));
         translog.rollGeneration();
         Closeable lock = translog.acquireRetentionLock();
         translog.add(new Translog.Index("3", 2, primaryTerm.get(), new byte[]{3}));
         translog.close();
         IOUtils.close(lock);
-        translog = new Translog(config, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
-            seqNo -> {});
+        translog = new Translog(config, channelFactory, translogUUID, deletionPolicy, () -> SequenceNumbers.NO_OPS_PERFORMED,
+            primaryTerm::get, seqNo -> {});
     }
 
     public static Translog.Location randomTranslogLocation() {
@@ -2998,8 +2999,9 @@ public class TranslogTests extends ESTestCase {
         }
         translog.rollGeneration();
         translog.close();
-        assertThat(Translog.readGlobalCheckpoint(translogDir, translogUUID), equalTo(globalCheckpoint.get()));
-        expectThrows(TranslogCorruptedException.class, () -> Translog.readGlobalCheckpoint(translogDir, UUIDs.randomBase64UUID()));
+        assertThat(Translog.readGlobalCheckpoint(translogDir, translogUUID, channelFactory), equalTo(globalCheckpoint.get()));
+        expectThrows(TranslogCorruptedException.class, () -> Translog.readGlobalCheckpoint(translogDir, UUIDs.randomBase64UUID(),
+            channelFactory));
     }
 
     public void testSnapshotReadOperationInReverse() throws Exception {
@@ -3071,9 +3073,10 @@ public class TranslogTests extends ESTestCase {
     public void testTranslogCloseInvariant() throws IOException {
         assumeTrue("test only works with assertions enabled", Assertions.ENABLED);
         class MisbehavingTranslog extends Translog {
-            MisbehavingTranslog(TranslogConfig config, String translogUUID, TranslogDeletionPolicy deletionPolicy,
-                                    LongSupplier globalCheckpointSupplier, LongSupplier primaryTermSupplier) throws IOException {
-                super(config, translogUUID, deletionPolicy, globalCheckpointSupplier, primaryTermSupplier, seqNo -> {});
+            MisbehavingTranslog(TranslogConfig config, ChannelFactory channelFactory, String translogUUID,
+                                TranslogDeletionPolicy deletionPolicy, LongSupplier globalCheckpointSupplier,
+                                LongSupplier primaryTermSupplier) throws IOException {
+                super(config, channelFactory, translogUUID, deletionPolicy, globalCheckpointSupplier, primaryTermSupplier, seqNo -> {});
             }
 
             void callCloseDirectly() throws IOException {
@@ -3099,9 +3102,10 @@ public class TranslogTests extends ESTestCase {
         globalCheckpoint = new AtomicLong(SequenceNumbers.NO_OPS_PERFORMED);
         Path path = createTempDir();
         final TranslogConfig translogConfig = getTranslogConfig(path);
-        final String translogUUID = Translog.createEmptyTranslog(path, SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
-        MisbehavingTranslog misbehavingTranslog = new MisbehavingTranslog(translogConfig, translogUUID, new TranslogDeletionPolicy(),
-            () -> globalCheckpoint.get(), primaryTerm::get);
+        final String translogUUID = Translog.createEmptyTranslog(path, SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(),
+            channelFactory);
+        MisbehavingTranslog misbehavingTranslog = new MisbehavingTranslog(translogConfig, channelFactory, translogUUID,
+            new TranslogDeletionPolicy(), () -> globalCheckpoint.get(), primaryTerm::get);
 
         expectThrows(AssertionError.class, () -> misbehavingTranslog.callCloseDirectly());
         expectThrows(AssertionError.class, () -> misbehavingTranslog.callCloseUsingIOUtils());
@@ -3193,7 +3197,7 @@ public class TranslogTests extends ESTestCase {
             assertThat(expectThrows(IOException.class, brokenTranslog::rollGeneration).getMessage(), equalTo(expectedExceptionMessage));
             assertFalse(brokenTranslog.isOpen());
 
-            try (Translog recoveredTranslog = new Translog(getTranslogConfig(path), brokenTranslog.getTranslogUUID(),
+            try (Translog recoveredTranslog = new Translog(getTranslogConfig(path), channelFactory, brokenTranslog.getTranslogUUID(),
                 brokenTranslog.getDeletionPolicy(), () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {})) {
                 recoveredTranslog.rollGeneration();
                 assertFilePresences(recoveredTranslog);
@@ -3205,7 +3209,7 @@ public class TranslogTests extends ESTestCase {
         Path path = createTempDir("translog");
         TranslogConfig config = getTranslogConfig(path);
         String translogUUID = Translog.createEmptyTranslog(
-            config.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
+            config.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), channelFactory);
         Set<Long> persistedSeqNos = ConcurrentCollections.newConcurrentSet();
         AtomicLong lastGlobalCheckpoint = new AtomicLong(SequenceNumbers.NO_OPS_PERFORMED);
         LongSupplier globalCheckpointSupplier = () -> {
@@ -3215,7 +3219,7 @@ public class TranslogTests extends ESTestCase {
                 return lastGlobalCheckpoint.get();
             }
         };
-        try (Translog translog = new Translog(config, translogUUID, new TranslogDeletionPolicy(),
+        try (Translog translog = new Translog(config, channelFactory, translogUUID, new TranslogDeletionPolicy(),
             globalCheckpointSupplier, primaryTerm::get, persistedSeqNos::add)) {
             Thread[] threads = new Thread[between(2, 8)];
             Phaser phaser = new Phaser(threads.length);
@@ -3283,15 +3287,9 @@ public class TranslogTests extends ESTestCase {
         };
         final TranslogConfig config = getTranslogConfig(createTempDir());
         final String translogUUID = Translog.createEmptyTranslog(
-            config.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, channelFactory, primaryTerm.get());
-        final Translog translog = new Translog(config, translogUUID, new TranslogDeletionPolicy(),
-            () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get,
-            seqNo -> {}) {
-            @Override
-            ChannelFactory getChannelFactory() {
-                return channelFactory;
-            }
-
+            config.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), channelFactory);
+        final Translog translog = new Translog(config, channelFactory, translogUUID, new TranslogDeletionPolicy(),
+            () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {}) {
             @Override
             void syncBeforeRollGeneration() {
                 // make it a noop like the old versions

@@ -221,7 +221,7 @@ public class PeerRecoveryTargetServiceTests extends IndexShardTestCase {
             RecoverySource.PeerRecoverySource.INSTANCE));
         globalCheckpoint =  randomFrom(UNASSIGNED_SEQ_NO, seqNoStats.getMaxSeqNo());
         String translogUUID = Translog.createEmptyTranslog(replica.shardPath().resolveTranslog(), globalCheckpoint,
-            replica.shardId(), replica.getPendingPrimaryTerm());
+            replica.shardId(), replica.getPendingPrimaryTerm(), replica.getTranslogChannelFactory());
         replica.store().associateIndexWithNewTranslog(translogUUID);
         safeCommit = replica.store().findSafeIndexCommit(globalCheckpoint);
         replica.markAsRecovering("for testing", new RecoveryState(replica.routingEntry(), localNode, localNode));
@@ -298,8 +298,8 @@ public class PeerRecoveryTargetServiceTests extends IndexShardTestCase {
         if (randomBoolean()) {
             shard.store().associateIndexWithNewTranslog(UUIDs.randomBase64UUID());
         } else if (randomBoolean()) {
-            Translog.createEmptyTranslog(
-                shard.shardPath().resolveTranslog(), seqNoStats.getGlobalCheckpoint(), shard.shardId(), shard.getOperationPrimaryTerm());
+            Translog.createEmptyTranslog(shard.shardPath().resolveTranslog(), seqNoStats.getGlobalCheckpoint(), shard.shardId(),
+                shard.getOperationPrimaryTerm(), shard.getTranslogChannelFactory());
         } else {
             IOUtils.rm(shard.shardPath().resolveTranslog());
         }

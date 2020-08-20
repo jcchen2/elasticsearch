@@ -79,6 +79,7 @@ import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.shard.AbstractIndexShardComponent;
 import org.elasticsearch.index.shard.IndexShard;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 
 import java.io.Closeable;
@@ -1474,14 +1475,14 @@ public class Store extends AbstractIndexShardComponent implements Closeable, Ref
      * translog generation of a commit is calculated based on the current local checkpoint. The local checkpoint of c3 is 1
      * while the local checkpoint of c2 is 2.
      */
-    public void trimUnsafeCommits(final Path translogPath) throws IOException {
+    public void trimUnsafeCommits(final Path translogPath, final ChannelFactory channelFactory) throws IOException {
         metadataLock.writeLock().lock();
         try {
             final List<IndexCommit> existingCommits = DirectoryReader.listCommits(directory);
             assert existingCommits.isEmpty() == false;
             final IndexCommit lastIndexCommit = existingCommits.get(existingCommits.size() - 1);
             final String translogUUID = lastIndexCommit.getUserData().get(Translog.TRANSLOG_UUID_KEY);
-            final long lastSyncedGlobalCheckpoint = Translog.readGlobalCheckpoint(translogPath, translogUUID);
+            final long lastSyncedGlobalCheckpoint = Translog.readGlobalCheckpoint(translogPath, translogUUID, channelFactory);
             final IndexCommit startingIndexCommit = CombinedDeletionPolicy.findSafeCommitPoint(existingCommits, lastSyncedGlobalCheckpoint);
             if (startingIndexCommit.equals(lastIndexCommit) == false) {
                 try (IndexWriter writer = newAppendingIndexWriter(directory, startingIndexCommit)) {

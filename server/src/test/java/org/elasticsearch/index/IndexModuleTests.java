@@ -73,6 +73,8 @@ import org.elasticsearch.index.shard.ShardPath;
 import org.elasticsearch.index.similarity.NonNegativeScoresSimilarity;
 import org.elasticsearch.index.similarity.SimilarityService;
 import org.elasticsearch.index.store.FsDirectoryFactory;
+import org.elasticsearch.index.translog.ChannelFactory;
+import org.elasticsearch.index.translog.DefaultChannelFactory;
 import org.elasticsearch.indices.IndicesModule;
 import org.elasticsearch.indices.IndicesQueryCache;
 import org.elasticsearch.indices.analysis.AnalysisModule;
@@ -95,12 +97,15 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.hamcrest.Matchers;
 
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonMap;
@@ -181,7 +186,8 @@ public class IndexModuleTests extends ESTestCase {
                 Collections.emptyMap(),
                 () -> true,
                 new IndexNameExpressionResolver(),
-                Collections.emptyMap());
+                Collections.emptyMap(),
+                Collections.emptyList());
         module.setReaderWrapper(s -> new Wrapper());
 
         IndexService indexService = newIndexService(module);
@@ -202,7 +208,7 @@ public class IndexModuleTests extends ESTestCase {
         final Map<String, IndexStorePlugin.DirectoryFactory> indexStoreFactories = singletonMap(
             "foo_store", new FooFunction());
         final IndexModule module = new IndexModule(indexSettings, emptyAnalysisRegistry, new InternalEngineFactory(), indexStoreFactories,
-            () -> true, new IndexNameExpressionResolver(), Collections.emptyMap());
+            () -> true, new IndexNameExpressionResolver(), Collections.emptyMap(), Collections.emptyList());
 
         final IndexService indexService = newIndexService(module);
         assertThat(indexService.getDirectoryFactory(), instanceOf(FooFunction.class));
@@ -518,7 +524,8 @@ public class IndexModuleTests extends ESTestCase {
             Collections.emptyMap(),
             () -> true,
             new IndexNameExpressionResolver(),
-            recoveryStateFactories);
+            recoveryStateFactories,
+            Collections.emptyList());
 
         final IndexService indexService = newIndexService(module);
 
@@ -538,7 +545,46 @@ public class IndexModuleTests extends ESTestCase {
 
     private static IndexModule createIndexModule(IndexSettings indexSettings, AnalysisRegistry emptyAnalysisRegistry) {
         return new IndexModule(indexSettings, emptyAnalysisRegistry, new InternalEngineFactory(), Collections.emptyMap(), () -> true,
-            new IndexNameExpressionResolver(), Collections.emptyMap());
+            new IndexNameExpressionResolver(), Collections.emptyMap(), Collections.emptyList());
+    }
+
+    public void testMultipleChannelFactoriesNotAllowed() {
+        Settings settings = Settings.builder()
+            .put(Environment.PATH_HOME_SETTING.getKey(), createTempDir().toString())
+            .put(IndexMetadata.SETTING_VERSION_CREATED, Version.CURRENT).build();
+        final IndexSettings indexSettings = IndexSettingsModule.newIndexSettings("foo", settings);
+        Function<IndexSettings, ChannelFactory> channelFactoryProvider = idxSettings -> new DefaultChannelFactory();
+        IndexModule module = new IndexModule(indexSettings, emptyAnalysisRegistry, new InternalEngineFactory(), Collections.emptyMap(),
+            () -> true, new IndexNameExpressionResolver(), Collections.emptyMap(),
+            Arrays.asList(channelFactoryProvider, channelFactoryProvider));
+        final IllegalStateException e = expectThrows(IllegalStateException.class, () -> newIndexService(module));
+        assertThat(e, hasToString(containsString("multiple translog ChannelFactory provided")));
+    }
+
+    public void testCustomChannelFactoryIsSelected() throws IOException {
+        Settings settings = Settings.builder()
+            .put(Environment.PATH_HOME_SETTING.getKey(), createTempDir().toString())
+            .put(IndexMetadata.SETTING_VERSION_CREATED, Version.CURRENT).build();
+        final IndexSettings indexSettings = IndexSettingsModule.newIndexSettings("foo", settings);
+        ChannelFactory customChannelFactory = FileChannel::open;
+        Function<IndexSettings, ChannelFactory> channelFactoryProvider = idxSettings -> customChannelFactory;
+        IndexModule module = new IndexModule(indexSettings, emptyAnalysisRegistry, new InternalEngineFactory(), Collections.emptyMap(),
+            () -> true, new IndexNameExpressionResolver(), Collections.emptyMap(), Collections.singleton(channelFactoryProvider));
+        IndexService indexService = newIndexService(module);
+        assertSame(customChannelFactory, indexService.getTranslogChannelFactory());
+        indexService.close("simon says", false);
+    }
+
+    public void testDefaultChannelFactoryIsSelected() throws IOException {
+        Settings settings = Settings.builder()
+            .put(Environment.PATH_HOME_SETTING.getKey(), createTempDir().toString())
+            .put(IndexMetadata.SETTING_VERSION_CREATED, Version.CURRENT).build();
+        final IndexSettings indexSettings = IndexSettingsModule.newIndexSettings("foo", settings);
+        IndexModule module = new IndexModule(indexSettings, emptyAnalysisRegistry, new InternalEngineFactory(), Collections.emptyMap(),
+            () -> true, new IndexNameExpressionResolver(), Collections.emptyMap(), Collections.emptyList());
+        IndexService indexService = newIndexService(module);
+        assertTrue(indexService.getTranslogChannelFactory() instanceof DefaultChannelFactory);
+        indexService.close("simon says", false);
     }
 
     class CustomQueryCache implements QueryCache {

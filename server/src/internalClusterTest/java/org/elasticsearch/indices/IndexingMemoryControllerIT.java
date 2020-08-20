@@ -67,8 +67,8 @@ public class IndexingMemoryControllerIT extends ESSingleNodeTestCase {
             return new EngineConfig(config.getShardId(), config.getAllocationId(), config.getThreadPool(),
                 indexSettings, config.getWarmer(), config.getStore(), config.getMergePolicy(), config.getAnalyzer(),
                 config.getSimilarity(), new CodecService(null, LogManager.getLogger(IndexingMemoryControllerIT.class)),
-                config.getEventListener(), config.getQueryCache(),
-                config.getQueryCachingPolicy(), config.getTranslogConfig(), config.getFlushMergesAfter(),
+                config.getEventListener(), config.getQueryCache(), config.getQueryCachingPolicy(),
+                config.getTranslogConfig(), config.getTranslogChannelFactory(), config.getFlushMergesAfter(),
                 config.getExternalRefreshListener(), config.getInternalRefreshListener(), config.getIndexSort(),
                 config.getCircuitBreakerService(), config.getGlobalCheckpointSupplier(), config.retentionLeasesSupplier(),
                 config.getPrimaryTermSupplier(), config.getTombstoneDocSupplier());

@@ -25,11 +25,13 @@ import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.shard.ShardPath;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.indices.recovery.RecoveryState;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * A plugin that provides alternative directory implementations.
@@ -82,4 +84,13 @@ public interface IndexStorePlugin {
     default Map<String, RecoveryStateFactory> getRecoveryStateFactories() {
         return Collections.emptyMap();
     }
+
+    /**
+     * The translog ChannelFactory provider for this plugin.
+     * @return a function that creates ChannelFactory from IndexSettings.
+     */
+    default Function<IndexSettings, ChannelFactory> getChannelFactoryProvider() {
+        return null;
+    }
+
 }

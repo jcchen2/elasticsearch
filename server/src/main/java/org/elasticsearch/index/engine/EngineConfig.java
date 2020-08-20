@@ -38,6 +38,7 @@ import org.elasticsearch.index.mapper.ParsedDocument;
 import org.elasticsearch.index.seqno.RetentionLeases;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.store.Store;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.index.translog.TranslogConfig;
 import org.elasticsearch.indices.IndexingMemoryController;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
@@ -117,6 +118,7 @@ public final class EngineConfig {
     }, Property.IndexScope, Property.NodeScope);
 
     private final TranslogConfig translogConfig;
+    private final ChannelFactory translogChannelFactory;
 
     /**
      * Creates a new {@link org.elasticsearch.index.engine.EngineConfig}
@@ -126,8 +128,8 @@ public final class EngineConfig {
                         MergePolicy mergePolicy, Analyzer analyzer,
                         Similarity similarity, CodecService codecService, Engine.EventListener eventListener,
                         QueryCache queryCache, QueryCachingPolicy queryCachingPolicy,
-                        TranslogConfig translogConfig, TimeValue flushMergesAfter,
-                        List<ReferenceManager.RefreshListener> externalRefreshListener,
+                        TranslogConfig translogConfig, ChannelFactory translogChannelFactory,
+                        TimeValue flushMergesAfter, List<ReferenceManager.RefreshListener> externalRefreshListener,
                         List<ReferenceManager.RefreshListener> internalRefreshListener, Sort indexSort,
                         CircuitBreakerService circuitBreakerService, LongSupplier globalCheckpointSupplier,
                         Supplier<RetentionLeases> retentionLeasesSupplier,
@@ -162,6 +164,7 @@ public final class EngineConfig {
         this.queryCache = queryCache;
         this.queryCachingPolicy = queryCachingPolicy;
         this.translogConfig = translogConfig;
+        this.translogChannelFactory = translogChannelFactory;
         this.flushMergesAfter = flushMergesAfter;
         this.externalRefreshListener = externalRefreshListener;
         this.internalRefreshListener = internalRefreshListener;
@@ -318,6 +321,13 @@ public final class EngineConfig {
      */
     public TranslogConfig getTranslogConfig() {
         return translogConfig;
+    }
+
+    /**
+     * Returns the translog channel factory for this engine
+     */
+    public ChannelFactory getTranslogChannelFactory() {
+        return translogChannelFactory;
     }
 
     /**

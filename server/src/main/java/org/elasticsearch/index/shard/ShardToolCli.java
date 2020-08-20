@@ -20,6 +20,7 @@ package org.elasticsearch.index.shard;
 
 import org.elasticsearch.cli.LoggingAwareMultiCommand;
 import org.elasticsearch.cli.Terminal;
+import org.elasticsearch.index.translog.DefaultChannelFactory;
 
 /**
  * Class encapsulating and dispatching commands from the {@code elasticsearch-shard} command line tool
@@ -28,7 +29,7 @@ public class ShardToolCli extends LoggingAwareMultiCommand {
 
     private ShardToolCli() {
         super("A CLI tool to remove corrupted parts of unrecoverable shards");
-        subcommands.put("remove-corrupted-data", new RemoveCorruptedShardDataCommand());
+        subcommands.put("remove-corrupted-data", new RemoveCorruptedShardDataCommand(indexSettings -> new DefaultChannelFactory()));
     }
 
     public static void main(String[] args) throws Exception {

@@ -124,6 +124,7 @@ import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.shard.ShardUtils;
 import org.elasticsearch.index.store.Store;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.index.translog.SnapshotMatchers;
 import org.elasticsearch.index.translog.TestTranslog;
 import org.elasticsearch.index.translog.Translog;
@@ -1038,7 +1039,7 @@ public class InternalEngineTests extends EngineTestCase {
         }
         if (randomBoolean()) {
             final String translogUUID = Translog.createEmptyTranslog(config.getTranslogConfig().getTranslogPath(),
-                UNASSIGNED_SEQ_NO, shardId, primaryTerm.get());
+                UNASSIGNED_SEQ_NO, shardId, primaryTerm.get(), config.getTranslogChannelFactory());
             store.associateIndexWithNewTranslog(translogUUID);
         }
         engine = new InternalEngine(config);
@@ -2525,7 +2526,7 @@ public class InternalEngineTests extends EngineTestCase {
                 store.createEmpty(Version.CURRENT.luceneVersion);
                 final String translogUUID =
                     Translog.createEmptyTranslog(config.getTranslogConfig().getTranslogPath(),
-                        SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
+                        SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), config.getTranslogChannelFactory());
                 store.associateIndexWithNewTranslog(translogUUID);
                 ParsedDocument doc = testParsedDocument(Integer.toString(0), null, testDocument(),
                     new BytesArray("{}"), null);
@@ -2559,7 +2560,7 @@ public class InternalEngineTests extends EngineTestCase {
             {
                 final String translogUUID =
                     Translog.createEmptyTranslog(config.getTranslogConfig().getTranslogPath(),
-                        SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
+                        SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), config.getTranslogChannelFactory());
                 store.associateIndexWithNewTranslog(translogUUID);
                 try (InternalEngine engine = new InternalEngine(config)) {
                     Map<String, String> userData = engine.getLastCommittedSegmentInfos().getUserData();
@@ -2597,7 +2598,8 @@ public class InternalEngineTests extends EngineTestCase {
         expectThrows(EngineCreationFailureException.class, "engine shouldn't start without a valid translog id",
             () -> createEngine(store, primaryTranslogDir));
         // when a new translog is created it should be ok
-        final String translogUUID = Translog.createEmptyTranslog(primaryTranslogDir, UNASSIGNED_SEQ_NO, shardId, newPrimaryTerm);
+        final String translogUUID = Translog.createEmptyTranslog(primaryTranslogDir, UNASSIGNED_SEQ_NO, shardId, newPrimaryTerm,
+            engine.config().getTranslogChannelFactory());
         store.associateIndexWithNewTranslog(translogUUID);
         EngineConfig config = config(defaultSettings, store, primaryTranslogDir, newMergePolicy(), null);
         engine = new InternalEngine(config);
@@ -2656,7 +2658,8 @@ public class InternalEngineTests extends EngineTestCase {
             final AtomicLong globalCheckpoint = new AtomicLong(SequenceNumbers.NO_OPS_PERFORMED);
             final LongSupplier globalCheckpointSupplier = () -> globalCheckpoint.get();
             store.createEmpty(Version.CURRENT.luceneVersion);
-            final String translogUUID = Translog.createEmptyTranslog(translogPath, globalCheckpoint.get(), shardId, primaryTerm.get());
+            final String translogUUID = Translog.createEmptyTranslog(translogPath, globalCheckpoint.get(), shardId,
+                primaryTerm.get(), engine.config().getTranslogChannelFactory());
             store.associateIndexWithNewTranslog(translogUUID);
             try (InternalEngine engine =
                      new InternalEngine(config(indexSettings, store, translogPath, newMergePolicy(), null, null,
@@ -2816,10 +2819,12 @@ public class InternalEngineTests extends EngineTestCase {
         engine.close();
 
         final Path badTranslogLog = createTempDir();
-        final String badUUID = Translog.createEmptyTranslog(badTranslogLog, SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
+        final String badUUID = Translog.createEmptyTranslog(badTranslogLog, SequenceNumbers.NO_OPS_PERFORMED, shardId,
+            primaryTerm.get(), engine.config().getTranslogChannelFactory());
         Translog translog = new Translog(
             new TranslogConfig(shardId, badTranslogLog, INDEX_SETTINGS, BigArrays.NON_RECYCLING_INSTANCE),
-            badUUID, new TranslogDeletionPolicy(), () -> SequenceNumbers.NO_OPS_PERFORMED, primaryTerm::get, seqNo -> {});
+            engine.config().getTranslogChannelFactory(), badUUID, new TranslogDeletionPolicy(), () -> SequenceNumbers.NO_OPS_PERFORMED,
+            primaryTerm::get, seqNo -> {});
         translog.add(new Translog.Index("SomeBogusId", 0, primaryTerm.get(),
             "{}".getBytes(Charset.forName("UTF-8"))));
         assertEquals(generation.translogFileGeneration, translog.currentFileGeneration());
@@ -2845,6 +2850,7 @@ public class InternalEngineTests extends EngineTestCase {
                 IndexSearcher.getDefaultQueryCache(),
                 IndexSearcher.getDefaultQueryCachingPolicy(),
                 translogConfig,
+                config.getTranslogChannelFactory(),
                 TimeValue.timeValueMinutes(5),
                 config.getExternalRefreshListener(),
                 config.getInternalRefreshListener(),
@@ -3527,7 +3533,7 @@ public class InternalEngineTests extends EngineTestCase {
         try (Store store = createStore(newFSDirectory(storeDir))) {
             if (randomBoolean() || true) {
                 final String translogUUID = Translog.createEmptyTranslog(translogDir,
-                    SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get());
+                    SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), engine.config().getTranslogChannelFactory());
                 store.associateIndexWithNewTranslog(translogUUID);
             }
             try (Engine engine = new InternalEngine(configSupplier.apply(store))) {
@@ -4514,16 +4520,19 @@ public class InternalEngineTests extends EngineTestCase {
         store = createStore();
         final AtomicLong globalCheckpoint = new AtomicLong(SequenceNumbers.NO_OPS_PERFORMED);
         store.createEmpty(Version.CURRENT.luceneVersion);
-        final String translogUUID = Translog.createEmptyTranslog(translogPath, globalCheckpoint.get(), shardId, primaryTerm.get());
+        final ChannelFactory channelFactory = engine.config().getTranslogChannelFactory();
+        final String translogUUID = Translog.createEmptyTranslog(translogPath, globalCheckpoint.get(), shardId,
+            primaryTerm.get(), channelFactory);
         store.associateIndexWithNewTranslog(translogUUID);
 
         final EngineConfig engineConfig = config(defaultSettings, store, translogPath,
             NoMergePolicy.INSTANCE, null, null, () -> globalCheckpoint.get());
-        final AtomicLong lastSyncedGlobalCheckpointBeforeCommit = new AtomicLong(Translog.readGlobalCheckpoint(translogPath, translogUUID));
+        final AtomicLong lastSyncedGlobalCheckpointBeforeCommit = new AtomicLong(Translog.readGlobalCheckpoint(translogPath, translogUUID,
+            channelFactory));
         try (InternalEngine engine = new InternalEngine(engineConfig) {
                 @Override
                 protected void commitIndexWriter(IndexWriter writer, Translog translog) throws IOException {
-                    lastSyncedGlobalCheckpointBeforeCommit.set(Translog.readGlobalCheckpoint(translogPath, translogUUID));
+                    lastSyncedGlobalCheckpointBeforeCommit.set(Translog.readGlobalCheckpoint(translogPath, translogUUID, channelFactory));
                     // Advance the global checkpoint during the flush to create a lag between a persisted global checkpoint in the translog
                     // (this value is visible to the deletion policy) and an in memory global checkpoint in the SequenceNumbersService.
                     if (rarely()) {
@@ -4991,7 +5000,7 @@ public class InternalEngineTests extends EngineTestCase {
                 minTranslogGen = engine.getTranslog().getMinFileGeneration();
             }
 
-            store.trimUnsafeCommits(config.getTranslogConfig().getTranslogPath());
+            store.trimUnsafeCommits(config.getTranslogConfig().getTranslogPath(), config.getTranslogChannelFactory());
             long safeMaxSeqNo =
                 commitMaxSeqNo.stream().filter(s -> s <= globalCheckpoint.get())
                     .reduce((s1, s2) -> s2) // get the last one.
@@ -5435,7 +5444,7 @@ public class InternalEngineTests extends EngineTestCase {
                 docs = getDocIds(hardDeletesEngine, true);
             }
             // We need to remove min_retained_seq_no commit tag as the actual hard-deletes engine does not have it.
-            store.trimUnsafeCommits(translogPath);
+            store.trimUnsafeCommits(translogPath, config.getTranslogChannelFactory());
             Map<String, String> userData = new HashMap<>(store.readLastCommittedSegmentsInfo().userData);
             userData.remove(Engine.MIN_RETAINED_SEQNO);
             IndexWriterConfig indexWriterConfig = new IndexWriterConfig(null)
@@ -5892,7 +5901,7 @@ public class InternalEngineTests extends EngineTestCase {
             EngineConfig configWithWarmer = new EngineConfig(config.getShardId(), config.getAllocationId(), config.getThreadPool(),
                 config.getIndexSettings(), warmer, store, config.getMergePolicy(), config.getAnalyzer(),
                 config.getSimilarity(), new CodecService(null, logger), config.getEventListener(), config.getQueryCache(),
-                config.getQueryCachingPolicy(), translogConfig, config.getFlushMergesAfter(),
+                config.getQueryCachingPolicy(), translogConfig, config.getTranslogChannelFactory(), config.getFlushMergesAfter(),
                 config.getExternalRefreshListener(), config.getInternalRefreshListener(), config.getIndexSort(),
                 config.getCircuitBreakerService(), config.getGlobalCheckpointSupplier(), config.retentionLeasesSupplier(),
                 config.getPrimaryTermSupplier(), config.getTombstoneDocSupplier());

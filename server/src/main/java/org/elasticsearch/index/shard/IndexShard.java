@@ -133,6 +133,7 @@ import org.elasticsearch.index.store.Store;
 import org.elasticsearch.index.store.Store.MetadataSnapshot;
 import org.elasticsearch.index.store.StoreFileMetadata;
 import org.elasticsearch.index.store.StoreStats;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.index.translog.TranslogConfig;
 import org.elasticsearch.index.translog.TranslogStats;
@@ -204,6 +205,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     private final Engine.Warmer warmer;
     private final SimilarityService similarityService;
     private final TranslogConfig translogConfig;
+    private final ChannelFactory translogChannelFactory;
     private final IndexEventListener indexEventListener;
     private final QueryCachingPolicy cachingPolicy;
     private final Supplier<Sort> indexSortSupplier;
@@ -282,6 +284,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             final IndexSettings indexSettings,
             final ShardPath path,
             final Store store,
+            final ChannelFactory translogChannelFactory,
             final Supplier<Sort> indexSortSupplier,
             final IndexCache indexCache,
             final MapperService mapperService,
@@ -336,6 +339,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
 
         this.checkIndexOnStartup = indexSettings.getValue(IndexSettings.INDEX_CHECK_ON_STARTUP);
         this.translogConfig = new TranslogConfig(shardId, shardPath().resolveTranslog(), indexSettings, bigArrays);
+        this.translogChannelFactory = translogChannelFactory;
         final String aId = shardRouting.allocationId().getId();
         final long primaryTerm = indexSettings.getIndexMetadata().primaryTerm(shardId.id());
         this.pendingPrimaryTerm = primaryTerm;
@@ -385,6 +389,10 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
 
     public Store store() {
         return this.store;
+    }
+
+    public ChannelFactory getTranslogChannelFactory() {
+        return translogChannelFactory;
     }
 
     /**
@@ -1390,7 +1398,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         final long globalCheckpoint;
         try {
             final String translogUUID = store.readLastCommittedSegmentsInfo().getUserData().get(Translog.TRANSLOG_UUID_KEY);
-            globalCheckpoint = Translog.readGlobalCheckpoint(translogConfig.getTranslogPath(), translogUUID);
+            globalCheckpoint = Translog.readGlobalCheckpoint(translogConfig.getTranslogPath(), translogUUID, translogChannelFactory);
             safeCommit = store.findSafeIndexCommit(globalCheckpoint);
         } catch (org.apache.lucene.index.IndexNotFoundException e) {
             logger.trace("skip local recovery as no index commit found");
@@ -1556,7 +1564,8 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         // acquiring a snapshot from the translog causes a sync which causes the global checkpoint to be pulled in,
         // and an engine can be forced to close in ctor which also causes the global checkpoint to be pulled in.
         final String translogUUID = store.readLastCommittedSegmentsInfo().getUserData().get(Translog.TRANSLOG_UUID_KEY);
-        final long globalCheckpoint = Translog.readGlobalCheckpoint(translogConfig.getTranslogPath(), translogUUID);
+        final long globalCheckpoint = Translog.readGlobalCheckpoint(translogConfig.getTranslogPath(), translogUUID,
+            translogChannelFactory);
         replicationTracker.updateGlobalCheckpointOnReplica(globalCheckpoint, "read from translog checkpoint");
     }
 
@@ -2709,7 +2718,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                 threadPool, indexSettings, warmer, store, indexSettings.getMergePolicy(),
                 mapperService != null ? mapperService.indexAnalyzer() : null,
                 similarityService.similarity(mapperService), codecService, shardEventListener,
-                indexCache != null ? indexCache.query() : null, cachingPolicy, translogConfig,
+                indexCache != null ? indexCache.query() : null, cachingPolicy, translogConfig, translogChannelFactory,
                 IndexingMemoryController.SHARD_INACTIVE_TIME_SETTING.get(indexSettings.getSettings()),
                 List.of(refreshListeners, refreshPendingLocationListener),
                 Collections.singletonList(new RefreshMetricUpdater(refreshMetric)),

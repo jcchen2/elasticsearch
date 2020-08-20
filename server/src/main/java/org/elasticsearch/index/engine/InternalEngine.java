@@ -87,6 +87,7 @@ import org.elasticsearch.index.seqno.SeqNoStats;
 import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.shard.ElasticsearchMergePolicy;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.index.translog.TranslogConfig;
 import org.elasticsearch.index.translog.TranslogCorruptedException;
@@ -205,7 +206,7 @@ public class InternalEngine extends Engine {
             mergeScheduler = scheduler = new EngineMergeScheduler(engineConfig.getShardId(), engineConfig.getIndexSettings());
             throttle = new IndexThrottle();
             try {
-                store.trimUnsafeCommits(config().getTranslogConfig().getTranslogPath());
+                store.trimUnsafeCommits(config().getTranslogConfig().getTranslogPath(), config().getTranslogChannelFactory());
                 translog = openTranslog(engineConfig, translogDeletionPolicy, engineConfig.getGlobalCheckpointSupplier(),
                     seqNo -> {
                         final LocalCheckpointTracker tracker = getLocalCheckpointTracker();
@@ -494,10 +495,11 @@ public class InternalEngine extends Engine {
                                   LongSupplier globalCheckpointSupplier, LongConsumer persistedSequenceNumberConsumer) throws IOException {
 
         final TranslogConfig translogConfig = engineConfig.getTranslogConfig();
+        final ChannelFactory channelFactory = engineConfig.getTranslogChannelFactory();
         final Map<String, String> userData = store.readLastCommittedSegmentsInfo().getUserData();
         final String translogUUID = Objects.requireNonNull(userData.get(Translog.TRANSLOG_UUID_KEY));
         // We expect that this shard already exists, so it must already have an existing translog else something is badly wrong!
-        return new Translog(translogConfig, translogUUID, translogDeletionPolicy, globalCheckpointSupplier,
+        return new Translog(translogConfig, channelFactory, translogUUID, translogDeletionPolicy, globalCheckpointSupplier,
             engineConfig.getPrimaryTermSupplier(), persistedSequenceNumberConsumer);
     }
 

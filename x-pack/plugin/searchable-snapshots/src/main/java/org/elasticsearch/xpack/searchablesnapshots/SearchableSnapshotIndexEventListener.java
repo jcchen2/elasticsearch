@@ -13,6 +13,7 @@ import org.elasticsearch.index.shard.IndexEventListener;
 import org.elasticsearch.index.shard.IndexShard;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.store.SearchableSnapshotDirectory;
+import org.elasticsearch.index.translog.DefaultChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.index.translog.TranslogException;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -51,7 +52,7 @@ public class SearchableSnapshotIndexEventListener implements IndexEventListener 
             final long primaryTerm = indexShard.getPendingPrimaryTerm();
             final String translogUUID = segmentInfos.userData.get(Translog.TRANSLOG_UUID_KEY);
             final Path translogLocation = indexShard.shardPath().resolveTranslog();
-            Translog.createEmptyTranslog(translogLocation, shardId, localCheckpoint, primaryTerm, translogUUID, null);
+            Translog.createEmptyTranslog(translogLocation, shardId, localCheckpoint, primaryTerm, translogUUID, indexShard.getTranslogChannelFactory());
         } catch (Exception e) {
             throw new TranslogException(shardId, "failed to associate a new translog", e);
         }

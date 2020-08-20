@@ -62,6 +62,8 @@ import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.MergePolicyConfig;
 import org.elasticsearch.index.MockEngineFactoryPlugin;
 import org.elasticsearch.index.seqno.SeqNoStats;
+import org.elasticsearch.index.translog.ChannelFactory;
+import org.elasticsearch.index.translog.DefaultChannelFactory;
 import org.elasticsearch.index.translog.TestTranslog;
 import org.elasticsearch.index.translog.TranslogCorruptedException;
 import org.elasticsearch.indices.IndicesService;
@@ -83,6 +85,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -108,6 +111,10 @@ public class RemoveCorruptedShardDataCommandIT extends ESIntegTestCase {
     @Override
     protected Collection<Class<? extends Plugin>> nodePlugins() {
         return Arrays.asList(MockTransportService.TestPlugin.class, MockEngineFactoryPlugin.class, InternalSettingsPlugin.class);
+    }
+
+    private Function<IndexSettings, ChannelFactory> getChannelFactoryProvider() {
+        return indexSettings -> new DefaultChannelFactory();
     }
 
     public void testCorruptIndex() throws Exception {
@@ -140,7 +147,7 @@ public class RemoveCorruptedShardDataCommandIT extends ESIntegTestCase {
 
         logger.info("--> indexed {} docs", numDocs);
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand(getChannelFactoryProvider());
         final MockTerminal terminal = new MockTerminal();
         final OptionParser parser = command.getParser();
 
@@ -296,7 +303,7 @@ public class RemoveCorruptedShardDataCommandIT extends ESIntegTestCase {
         }
         indexRandom(false, false, false, Arrays.asList(builders));
 
-        RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand(getChannelFactoryProvider());
         MockTerminal terminal = new MockTerminal();
         OptionParser parser = command.getParser();
 
@@ -500,7 +507,7 @@ public class RemoveCorruptedShardDataCommandIT extends ESIntegTestCase {
         assertHitCount(client().prepareSearch(indexName).setQuery(matchAllQuery()).get(), totalDocs);
 
         // check replica corruption
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand(getChannelFactoryProvider());
         final MockTerminal terminal = new MockTerminal();
         final OptionParser parser = command.getParser();
 
@@ -557,7 +564,7 @@ public class RemoveCorruptedShardDataCommandIT extends ESIntegTestCase {
         assertThat(shardRouting, notNullValue());
         final ShardId shardId = shardRouting.shardId();
 
-        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand();
+        final RemoveCorruptedShardDataCommand command = new RemoveCorruptedShardDataCommand(getChannelFactoryProvider());
         final OptionParser parser = command.getParser();
 
         final Map<String, Path> indexPathByNodeName = new HashMap<>();

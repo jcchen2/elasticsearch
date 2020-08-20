@@ -26,6 +26,7 @@ import org.apache.lucene.index.IndexDeletionPolicy;
 import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.store.Directory;
 import org.elasticsearch.index.seqno.SequenceNumbers;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.index.translog.TranslogDeletionPolicy;
 
@@ -174,7 +175,8 @@ public class CombinedDeletionPolicy extends IndexDeletionPolicy {
      * In this case, this method will return the oldest index commit.
      *
      * @param commits          a list of existing commit points
-     * @param globalCheckpoint the persisted global checkpoint from the translog, see {@link Translog#readGlobalCheckpoint(Path, String)}
+     * @param globalCheckpoint the persisted global checkpoint from the translog, see {@link Translog#readGlobalCheckpoint(Path,
+     * String, ChannelFactory)}
      * @return a safe commit or the oldest commit if a safe commit is not found
      */
     public static IndexCommit findSafeCommitPoint(List<IndexCommit> commits, long globalCheckpoint) throws IOException {

@@ -123,7 +123,7 @@ public class TranslogWriter extends BaseTranslogReader implements Closeable {
             header.write(channel);
             final Checkpoint checkpoint = Checkpoint.emptyTranslogCheckpoint(header.sizeInBytes(), fileGeneration,
                 initialGlobalCheckpoint, initialMinTranslogGen);
-            writeCheckpoint(channelFactory, file.getParent(), checkpoint);
+            writeCheckpoint(file.getParent(), checkpoint);
             final LongSupplier writerGlobalCheckpointSupplier;
             if (Assertions.ENABLED) {
                 writerGlobalCheckpointSupplier = () -> {
@@ -374,7 +374,7 @@ public class TranslogWriter extends BaseTranslogReader implements Closeable {
                     // we can continue writing to the buffer etc.
                     try {
                         channel.force(false);
-                        writeCheckpoint(channelFactory, path.getParent(), checkpointToSync);
+                        writeCheckpoint(path.getParent(), checkpointToSync);
                     } catch (final Exception ex) {
                         closeWithTragicEvent(ex);
                         throw ex;
@@ -414,10 +414,9 @@ public class TranslogWriter extends BaseTranslogReader implements Closeable {
     }
 
     private static void writeCheckpoint(
-            final ChannelFactory channelFactory,
             final Path translogFile,
             final Checkpoint checkpoint) throws IOException {
-        Checkpoint.write(channelFactory, translogFile.resolve(Translog.CHECKPOINT_FILE_NAME), checkpoint, StandardOpenOption.WRITE);
+        Checkpoint.write(FileChannel::open, translogFile.resolve(Translog.CHECKPOINT_FILE_NAME), checkpoint, StandardOpenOption.WRITE);
     }
 
     /**

@@ -417,7 +417,7 @@ final class StoreRecovery {
                 store.createEmpty(indexShard.indexSettings().getIndexVersionCreated().luceneVersion);
                 final String translogUUID = Translog.createEmptyTranslog(
                     indexShard.shardPath().resolveTranslog(), SequenceNumbers.NO_OPS_PERFORMED, shardId,
-                    indexShard.getPendingPrimaryTerm());
+                    indexShard.getPendingPrimaryTerm(), indexShard.getTranslogChannelFactory());
                 store.associateIndexWithNewTranslog(translogUUID);
                 writeEmptyRetentionLeasesFile(indexShard);
                 indexShard.recoveryState().getIndex().setFileDetailsComplete();
@@ -507,8 +507,8 @@ final class StoreRecovery {
         store.bootstrapNewHistory();
         final SegmentInfos segmentInfos = store.readLastCommittedSegmentsInfo();
         final long localCheckpoint = Long.parseLong(segmentInfos.userData.get(SequenceNumbers.LOCAL_CHECKPOINT_KEY));
-        final String translogUUID = Translog.createEmptyTranslog(
-            indexShard.shardPath().resolveTranslog(), localCheckpoint, shardId, indexShard.getPendingPrimaryTerm());
+        final String translogUUID = Translog.createEmptyTranslog(indexShard.shardPath().resolveTranslog(), localCheckpoint, shardId,
+            indexShard.getPendingPrimaryTerm(), indexShard.getTranslogChannelFactory());
         store.associateIndexWithNewTranslog(translogUUID);
     }
 }

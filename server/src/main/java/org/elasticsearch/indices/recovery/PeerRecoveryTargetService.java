@@ -251,7 +251,8 @@ public class PeerRecoveryTargetService implements IndexEventListener {
             // Make sure that the current translog is consistent with the Lucene index; otherwise, we have to throw away the Lucene index.
             try {
                 final String expectedTranslogUUID = metadataSnapshot.getCommitUserData().get(Translog.TRANSLOG_UUID_KEY);
-                final long globalCheckpoint = Translog.readGlobalCheckpoint(recoveryTarget.translogLocation(), expectedTranslogUUID);
+                final long globalCheckpoint = Translog.readGlobalCheckpoint(recoveryTarget.translogLocation(), expectedTranslogUUID,
+                    recoveryTarget.indexShard().getTranslogChannelFactory());
                 assert globalCheckpoint + 1 >= startingSeqNo : "invalid startingSeqNo " + startingSeqNo + " >= " + globalCheckpoint;
             } catch (IOException | TranslogCorruptedException e) {
                 logger.warn(new ParameterizedMessage("error while reading global checkpoint from translog, " +

@@ -75,6 +75,7 @@ import org.elasticsearch.index.shard.ShardNotInPrimaryModeException;
 import org.elasticsearch.index.shard.ShardPath;
 import org.elasticsearch.index.similarity.SimilarityService;
 import org.elasticsearch.index.store.Store;
+import org.elasticsearch.index.translog.ChannelFactory;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
 import org.elasticsearch.indices.cluster.IndicesClusterStateService;
@@ -118,6 +119,7 @@ public class IndexService extends AbstractIndexComponent implements IndicesClust
     private final IndexStorePlugin.DirectoryFactory directoryFactory;
     private final IndexStorePlugin.RecoveryStateFactory recoveryStateFactory;
     private final CheckedFunction<DirectoryReader, DirectoryReader, IOException> readerWrapper;
+    private final ChannelFactory translogChannelFactory;
     private final IndexCache indexCache;
     private final MapperService mapperService;
     private final NamedXContentRegistry xContentRegistry;
@@ -167,6 +169,7 @@ public class IndexService extends AbstractIndexComponent implements IndicesClust
             Client client,
             QueryCache queryCache,
             IndexStorePlugin.DirectoryFactory directoryFactory,
+            ChannelFactory translogChannelFactory,
             IndexEventListener eventListener,
             Function<IndexService, CheckedFunction<DirectoryReader, DirectoryReader, IOException>> wrapperFactory,
             MapperRegistry mapperRegistry,
@@ -228,6 +231,7 @@ public class IndexService extends AbstractIndexComponent implements IndicesClust
         this.nodeEnv = nodeEnv;
         this.directoryFactory = directoryFactory;
         this.recoveryStateFactory = recoveryStateFactory;
+        this.translogChannelFactory = translogChannelFactory;
         this.engineFactory = Objects.requireNonNull(engineFactory);
         // initialize this last -- otherwise if the wrapper requires any other member to be non-null we fail with an NPE
         this.readerWrapper = wrapperFactory.apply(this);
@@ -465,6 +469,7 @@ public class IndexService extends AbstractIndexComponent implements IndicesClust
                     this.indexSettings,
                     path,
                     store,
+                    translogChannelFactory,
                     indexSortSupplier,
                     indexCache,
                     mapperService,
@@ -822,6 +827,10 @@ public class IndexService extends AbstractIndexComponent implements IndicesClust
 
     final IndexStorePlugin.DirectoryFactory getDirectoryFactory() {
         return directoryFactory;
+    } // pkg private for testing
+
+    final ChannelFactory getTranslogChannelFactory() {
+        return translogChannelFactory;
     } // pkg private for testing
 
     private void maybeFSyncTranslogs() {
