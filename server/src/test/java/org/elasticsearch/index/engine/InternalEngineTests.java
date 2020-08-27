@@ -1039,7 +1039,7 @@ public class InternalEngineTests extends EngineTestCase {
         }
         if (randomBoolean()) {
             final String translogUUID = Translog.createEmptyTranslog(config.getTranslogConfig().getTranslogPath(),
-                UNASSIGNED_SEQ_NO, shardId, primaryTerm.get(), config.getTranslogChannelFactory());
+                UNASSIGNED_SEQ_NO, shardId, config.getTranslogChannelFactory(), primaryTerm.get());
             store.associateIndexWithNewTranslog(translogUUID);
         }
         engine = new InternalEngine(config);
@@ -2526,7 +2526,7 @@ public class InternalEngineTests extends EngineTestCase {
                 store.createEmpty(Version.CURRENT.luceneVersion);
                 final String translogUUID =
                     Translog.createEmptyTranslog(config.getTranslogConfig().getTranslogPath(),
-                        SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), config.getTranslogChannelFactory());
+                        SequenceNumbers.NO_OPS_PERFORMED, shardId, config.getTranslogChannelFactory(), primaryTerm.get());
                 store.associateIndexWithNewTranslog(translogUUID);
                 ParsedDocument doc = testParsedDocument(Integer.toString(0), null, testDocument(),
                     new BytesArray("{}"), null);
@@ -2560,7 +2560,7 @@ public class InternalEngineTests extends EngineTestCase {
             {
                 final String translogUUID =
                     Translog.createEmptyTranslog(config.getTranslogConfig().getTranslogPath(),
-                        SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), config.getTranslogChannelFactory());
+                        SequenceNumbers.NO_OPS_PERFORMED, shardId, config.getTranslogChannelFactory(), primaryTerm.get());
                 store.associateIndexWithNewTranslog(translogUUID);
                 try (InternalEngine engine = new InternalEngine(config)) {
                     Map<String, String> userData = engine.getLastCommittedSegmentInfos().getUserData();
@@ -2598,8 +2598,8 @@ public class InternalEngineTests extends EngineTestCase {
         expectThrows(EngineCreationFailureException.class, "engine shouldn't start without a valid translog id",
             () -> createEngine(store, primaryTranslogDir));
         // when a new translog is created it should be ok
-        final String translogUUID = Translog.createEmptyTranslog(primaryTranslogDir, UNASSIGNED_SEQ_NO, shardId, newPrimaryTerm,
-            engine.config().getTranslogChannelFactory());
+        final String translogUUID = Translog.createEmptyTranslog(primaryTranslogDir, UNASSIGNED_SEQ_NO, shardId,
+            engine.config().getTranslogChannelFactory(), newPrimaryTerm);
         store.associateIndexWithNewTranslog(translogUUID);
         EngineConfig config = config(defaultSettings, store, primaryTranslogDir, newMergePolicy(), null);
         engine = new InternalEngine(config);
@@ -2659,7 +2659,7 @@ public class InternalEngineTests extends EngineTestCase {
             final LongSupplier globalCheckpointSupplier = () -> globalCheckpoint.get();
             store.createEmpty(Version.CURRENT.luceneVersion);
             final String translogUUID = Translog.createEmptyTranslog(translogPath, globalCheckpoint.get(), shardId,
-                primaryTerm.get(), engine.config().getTranslogChannelFactory());
+                engine.config().getTranslogChannelFactory(), primaryTerm.get());
             store.associateIndexWithNewTranslog(translogUUID);
             try (InternalEngine engine =
                      new InternalEngine(config(indexSettings, store, translogPath, newMergePolicy(), null, null,
@@ -2820,7 +2820,7 @@ public class InternalEngineTests extends EngineTestCase {
 
         final Path badTranslogLog = createTempDir();
         final String badUUID = Translog.createEmptyTranslog(badTranslogLog, SequenceNumbers.NO_OPS_PERFORMED, shardId,
-            primaryTerm.get(), engine.config().getTranslogChannelFactory());
+            engine.config().getTranslogChannelFactory(), primaryTerm.get());
         Translog translog = new Translog(
             new TranslogConfig(shardId, badTranslogLog, INDEX_SETTINGS, BigArrays.NON_RECYCLING_INSTANCE),
             engine.config().getTranslogChannelFactory(), badUUID, new TranslogDeletionPolicy(), () -> SequenceNumbers.NO_OPS_PERFORMED,
@@ -3533,7 +3533,7 @@ public class InternalEngineTests extends EngineTestCase {
         try (Store store = createStore(newFSDirectory(storeDir))) {
             if (randomBoolean() || true) {
                 final String translogUUID = Translog.createEmptyTranslog(translogDir,
-                    SequenceNumbers.NO_OPS_PERFORMED, shardId, primaryTerm.get(), engine.config().getTranslogChannelFactory());
+                    SequenceNumbers.NO_OPS_PERFORMED, shardId, engine.config().getTranslogChannelFactory(), primaryTerm.get());
                 store.associateIndexWithNewTranslog(translogUUID);
             }
             try (Engine engine = new InternalEngine(configSupplier.apply(store))) {
@@ -4522,7 +4522,7 @@ public class InternalEngineTests extends EngineTestCase {
         store.createEmpty(Version.CURRENT.luceneVersion);
         final ChannelFactory channelFactory = engine.config().getTranslogChannelFactory();
         final String translogUUID = Translog.createEmptyTranslog(translogPath, globalCheckpoint.get(), shardId,
-            primaryTerm.get(), channelFactory);
+            channelFactory, primaryTerm.get());
         store.associateIndexWithNewTranslog(translogUUID);
 
         final EngineConfig engineConfig = config(defaultSettings, store, translogPath,

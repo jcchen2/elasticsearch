@@ -128,7 +128,7 @@ public class RefreshListenersTests extends ESTestCase {
         final ChannelFactory translogChannelFactory = new DefaultChannelFactory();
         final String translogUUID =
             Translog.createEmptyTranslog(translogConfig.getTranslogPath(), SequenceNumbers.NO_OPS_PERFORMED, shardId,
-                primaryTerm, translogChannelFactory);
+                translogChannelFactory, primaryTerm);
         store.associateIndexWithNewTranslog(translogUUID);
         EngineConfig config = new EngineConfig(
                 shardId,

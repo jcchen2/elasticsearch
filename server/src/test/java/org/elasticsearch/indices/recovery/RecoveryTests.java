@@ -206,7 +206,7 @@ public class RecoveryTests extends ESIndexLevelReplicationTestCase {
             if (randomBoolean()) {
                 // create a new translog
                 translogUUIDtoUse = Translog.createEmptyTranslog(replica.shardPath().resolveTranslog(), flushedDocs,
-                    replica.shardId(), replica.getPendingPrimaryTerm(), replica.getTranslogChannelFactory());
+                    replica.shardId(), replica.getTranslogChannelFactory(), replica.getPendingPrimaryTerm());
             } else {
                 translogUUIDtoUse = translogGeneration.translogUUID;
             }

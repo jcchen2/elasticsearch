@@ -301,7 +301,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     }
 
     TranslogReader openReader(Path path, Checkpoint checkpoint) throws IOException {
-        FileChannel channel = channelFactory.open(path, StandardOpenOption.READ);
+        FileChannel channel = getTranslogChannelFactory().open(path, StandardOpenOption.READ);
         try {
             assert Translog.parseIdFromFileName(path) == checkpoint.generation : "expected generation: " +
                 Translog.parseIdFromFileName(path) + " but got: " + checkpoint.generation;
@@ -508,7 +508,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                 translogUUID,
                 fileGeneration,
                 location.resolve(getFilename(fileGeneration)),
-                getChannelFactory(),
+                getTranslogChannelFactory(),
                 config.getBufferSize(),
                 initialMinTranslogGen, initialGlobalCheckpoint,
                 globalCheckpointSupplier, this::getMinFileGeneration, primaryTermSupplier.getAsLong(), tragedy,
@@ -763,7 +763,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                 for (TranslogReader reader : readers) {
                     final TranslogReader newReader =
                         reader.getPrimaryTerm() < belowTerm
-                            ? reader.closeIntoTrimmedReader(aboveSeqNo, getChannelFactory())
+                            ? reader.closeIntoTrimmedReader(aboveSeqNo, getCheckpointChannelFactory())
                             : reader;
                     newReaders.add(newReader);
                 }
@@ -1769,8 +1769,12 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
         }
     }
 
-    protected ChannelFactory getChannelFactory() {
+    protected ChannelFactory getTranslogChannelFactory() {
         return channelFactory;
+    }
+
+    protected ChannelFactory getCheckpointChannelFactory() {
+        return FileChannel::open;
     }
 
     /**
@@ -1846,7 +1850,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     }
 
     public static String createEmptyTranslog(Path location, long initialGlobalCheckpoint, ShardId shardId,
-                                             long primaryTerm, ChannelFactory channelFactory) throws IOException {
+                                             ChannelFactory channelFactory, long primaryTerm) throws IOException {
         return createEmptyTranslog(location, shardId, initialGlobalCheckpoint, primaryTerm, null, channelFactory);
     }
 
@@ -1856,7 +1860,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
      *
      * This method should be used directly under specific circumstances like for shards that will see no indexing. Specifying a non-unique
      * translog UUID could cause a lot of issues and that's why in all (but one) cases the method
-     * {@link #createEmptyTranslog(Path, long, ShardId, long, ChannelFactory)} should be used instead.
+     * {@link #createEmptyTranslog(Path, long, ShardId, ChannelFactory, long)} should be used instead.
      *
      * @param location                a {@link Path} to the directory that will contains the translog files (translog + translog checkpoint)
      * @param shardId                 the {@link ShardId}
